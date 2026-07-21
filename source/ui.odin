@@ -539,7 +539,7 @@ ui_resolve_type :: proc(action: ControlName) -> UI_Type {
 		return .Destructive
 	case .Innuendo:
 		return .Innuendo
-	case .Oscar_Moment, .SlasClub, .Slas50sPop, .SlasUpbeat, .SlasSlowJam, .AveMaria:
+	case .Oscar_Moment, .SlasClub, .Slas50sPop, .SlasUpbeat, .SlasSlowJam:
 		return .Game
 	case .Glass_Break,
 	     .Gunshot,
