@@ -13,7 +13,6 @@ build-web: generate-enums
 generate-enums:
 	@echo "Generating enums and hashes..."
 	@odin run source/tools/generate_enums >/dev/null
-	@$(MAKE) format
 
 run: clean generate-enums
 	@./scripts/build_hot_reload.sh run
