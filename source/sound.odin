@@ -782,8 +782,8 @@ playlist_pick_track_unplayed :: proc(playlist: ^Playlist) -> ^Track {
 	fallback: ^Track
 	unplayed_seen := 0
 	for &current_track in playlist.tracks {
-		fallback = &current_track
 		if current_track.played do continue
+		fallback = &current_track
 		unplayed_seen += 1
 		if rand.int_max(unplayed_seen) == 0 && playlist.last_played_track != &current_track {
 			track = &current_track

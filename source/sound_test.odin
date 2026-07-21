@@ -285,6 +285,8 @@ track_pick_unplayed_returns_nil_when_exhausted_and_reset_makes_pickable :: proc(
 	append(&playlist.tracks, Track{title = "played", path = "played.mp3", played = true})
 
 	testing.expect(t, playlist_pick_track_unplayed(&playlist) == nil)
+	sound_settings.shuffle = true
+	testing.expect(t, playlist_pick_track_unplayed(&playlist) == nil)
 	track := track_pick_unplayed_after_reset_for_test(&playlist)
 	testing.expect(t, track != nil, "reset should make exhausted tracks pickable")
 }
