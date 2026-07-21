@@ -629,7 +629,6 @@ controls_draw :: proc() {
 					// maybe we want the indirection of a state machine here?
 				} else if playlist_is_current(.Kids_on_Bikes_80s_Chill) {
 					for &voice in gm.sound_settings.music_voices {
-						if !voice.active do continue
 						music_voice_fade_out(&voice, gm.sound_settings.fade_out_time)
 					}
 				}
