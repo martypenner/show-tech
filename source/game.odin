@@ -63,8 +63,10 @@ AppInitializing :: distinct u8
 AppReady :: distinct u8
 
 update :: proc() {
-	if rl.IsKeyPressed(.ESCAPE) {
-		gm.should_run = false
+	when ODIN_DEBUG {
+		if rl.IsKeyPressed(.ESCAPE) {
+			gm.should_run = false
+		}
 	}
 
 	switch s in gm.app_state {
