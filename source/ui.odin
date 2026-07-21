@@ -759,6 +759,7 @@ controls_draw :: proc() {
 					}
 				}
 
+				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
 			}
 		case .Scene_Fade:
@@ -768,6 +769,7 @@ controls_draw :: proc() {
 					music_voice_fade_out(&voice, 2)
 				}
 
+				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
 			}
 		case .Drop_Needle:
