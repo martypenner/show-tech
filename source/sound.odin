@@ -5,7 +5,6 @@ import "core:fmt"
 import "core:log"
 import "core:math"
 import "core:math/rand"
-import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
@@ -282,24 +281,6 @@ track_volume_multiplier :: proc(active_rms: f32) -> f32 {
 	)
 }
 
-playlists_load_async :: proc() {
-	scratch: mem.Dynamic_Arena
-	mem.dynamic_arena_init(&scratch)
-	// Need a new temp allocator since the global one gets freed every frame, and
-	// we're doing threaded chunks of work.
-	context.temp_allocator = mem.dynamic_arena_allocator(&scratch)
-	defer mem.dynamic_arena_destroy(&scratch)
-
-	sound_settings.playlists = playlists_load()
-	for _, playlist_index in sound_settings.playlists {
-		sound_settings.music_browser_playlist_index = i32(playlist_index)
-		sound_settings.music_browser_track_index = i32(0)
-		break
-	}
-	_, playlist_selected := sound_settings.music_browser_playlist_index.?
-	ensure(playlist_selected, "No music tracks found")
-}
-
 sound_retrigger_fade_needed :: proc(
 	voice_name: SoundEffectName,
 	trigger_name: SoundEffectName,
@@ -364,7 +345,7 @@ track_is_current :: proc(track_name: ControlName) -> bool {
 	return voice != nil && voice.track.title == name
 }
 
-sound_settings_load :: proc() -> SoundSettings {
+sound_settings_load_from_disk :: proc() -> SoundSettings {
 	filename := sound_settings_filename()
 	settings := DefaultSoundSettings
 	if os.exists(filename) {
@@ -836,7 +817,15 @@ sound_settings_init :: proc() -> ^SoundSettings {
 	rl.InitAudioDevice()
 
 	sound_settings = new(SoundSettings)
-	sound_settings^ = sound_settings_load()
+	sound_settings^ = sound_settings_load_from_disk()
+	sound_settings.playlists = playlists_load()
+	for _, playlist_index in sound_settings.playlists {
+		sound_settings.music_browser_playlist_index = i32(playlist_index)
+		sound_settings.music_browser_track_index = i32(0)
+		break
+	}
+	_, playlist_selected := sound_settings.music_browser_playlist_index.?
+	ensure(playlist_selected, "No music tracks found")
 
 	return sound_settings
 }

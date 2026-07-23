@@ -40,7 +40,6 @@ gm: ^GameMemory
 
 GameMemory :: struct {
 	should_run:     bool,
-	app_state:      AppState,
 	active_tab:     Tab,
 	ui:             UIControls,
 	sound_settings: ^SoundSettings,
@@ -54,13 +53,8 @@ GameMemory :: struct {
 	},
 }
 
-AppState :: union #no_nil {
-	AppInitializing,
-	AppReady,
-}
-
-AppInitializing :: distinct u8
-AppReady :: distinct u8
+window_width: i32 = 1280
+window_height: i32 = 720
 
 update :: proc() {
 	when ODIN_DEBUG {
@@ -69,40 +63,22 @@ update :: proc() {
 		}
 	}
 
-	switch s in gm.app_state {
-	case AppInitializing:
-		if gm.loader != nil && thread.is_done(gm.loader) {
-			thread.destroy(gm.loader)
-			gm.loader = nil
-			gm.app_state = AppReady{}
-		}
-	case AppReady:
-		if rl.IsWindowResized() {
-			controls_prepare_for_render(gm.ui.items[:], rl.GetRenderWidth(), rl.GetRenderHeight())
-		}
-		sound_update()
-		ui_control_set_value(&gm.ui, .Music_Volume, sound_music_current_volume())
-		lighting_update()
+
+	if rl.IsWindowResized() {
+		window_width = rl.GetRenderWidth()
+		window_height = rl.GetRenderHeight()
+		controls_prepare_for_render(gm.ui.items[:], window_width, window_height)
 	}
+	sound_update()
+	ui_control_set_value(&gm.ui, .Music_Volume, sound_music_current_volume())
+	lighting_update()
 }
 
 draw :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground({16, 16, 16, 255})
 
-	switch s in gm.app_state {
-	case AppInitializing:
-		font_size := i32(40)
-		x := (rl.GetRenderWidth() - rl.MeasureText("Normalizing audio...", font_size)) / 2
-		y := rl.GetRenderHeight() / 2 - font_size / 2
-
-		dots := "..."
-		dot_count := int(rl.GetTime() / 0.5) % 3 + 1
-		text := fmt.ctprintf("Normalizing audio%s", dots[:dot_count])
-		rl.DrawText(text, x, y, font_size, rl.RAYWHITE)
-	case AppReady:
-		controls_draw()
-	}
+	controls_draw()
 
 	rl.EndDrawing()
 }
@@ -118,8 +94,8 @@ game_update :: proc() {
 
 @(export)
 game_init_window :: proc() {
-	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
-	rl.InitWindow(1280, 720, "Showtime")
+	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT, .MSAA_4X_HINT})
+	rl.InitWindow(window_width, window_height, "Showtime")
 	when ODIN_OS != .JS do rl.SetWindowPosition(200, 200)
 	// I'd like this to be higher - e.g. 500 for latency purposes - but it eats
 	// more CPU (obviously) on older machines.
@@ -143,7 +119,6 @@ game_memory_make :: proc() -> ^GameMemory {
 	memory := new(GameMemory)
 	memory^ = GameMemory {
 		should_run = true,
-		app_state  = AppInitializing{},
 	}
 	return memory
 }
@@ -153,7 +128,6 @@ game_init :: proc() {
 	gm = game_memory_make()
 
 	gm.sound_settings = sound_settings_init()
-	gm.loader = thread.create_and_start(playlists_load_async, context)
 
 	gm.ui = ui_controls_make(layout_build())
 	ui_control_set_value(&gm.ui, .Use_House_Music, gm.sound_settings.use_house_music)
@@ -161,7 +135,6 @@ game_init :: proc() {
 		control.ui_type = ui_resolve_type(control.name_id)
 	}
 
-	thread.join(gm.loader)
 	music_browser_playlists_refresh()
 	music_browser_tracks_refresh()
 
@@ -246,5 +219,7 @@ game_force_restart :: proc() -> bool {
 // In a web build, this is called when browser changes size. Remove the
 // `rl.SetWindowSize` call if you don't want a resizable game.
 game_parent_window_size_changed :: proc(w, h: int) {
+	window_width = rl.GetRenderWidth()
+	window_height = rl.GetRenderHeight()
 	rl.SetWindowSize(i32(w), i32(h))
 }

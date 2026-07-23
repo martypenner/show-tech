@@ -525,7 +525,7 @@ layout_build :: proc() -> Controls {
 	layout_load(&controls, "music.rgl", string(#load("../resources/music.rgl")), Tab.Music)
 	layout_load(&controls, "chrome.rgl", string(#load("../resources/chrome.rgl")), Tab.All)
 
-	controls_prepare_for_render(controls[:], rl.GetRenderWidth(), rl.GetRenderHeight())
+	controls_prepare_for_render(controls[:], window_width, window_height)
 	return controls
 }
 
