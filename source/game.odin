@@ -63,7 +63,6 @@ update :: proc() {
 		}
 	}
 
-
 	if rl.IsWindowResized() {
 		window_width = rl.GetRenderWidth()
 		window_height = rl.GetRenderHeight()
