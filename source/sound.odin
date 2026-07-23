@@ -386,10 +386,10 @@ music_track_bounds_resolve :: proc(
 	return stored_bounds, false
 }
 
-music_track_time_relative :: proc(file_time, start_time, end_time: f32) -> (played, length: f32) {
+music_track_time_relative :: proc(elapsed_time, start_time, end_time: f32) -> (played, length: f32) {
 	length = end_time - start_time
 	ensure(length > 0)
-	played = math.clamp(file_time - start_time, 0, length)
+	played = math.clamp(elapsed_time, 0, length)
 	return
 }
 

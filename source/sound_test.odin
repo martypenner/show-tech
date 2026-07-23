@@ -105,8 +105,13 @@ music_volume_applies_track_gain_when_normalized :: proc(t: ^testing.T) {
 	}
 	sound_settings = &settings
 
-	track_path := "assets/sounds/music/Easy Listening/01 - Happy and Fun Pop Background Music For Videos.mp3"
-	expected_gain := track_volume_multiplier(TRACKS[track_path].active_rms)
+	track_path := "test-normalized-track.mp3"
+	track_active_rms := f32(0.1)
+	TRACKS[track_path] = GeneratedTrack {
+		active_rms = track_active_rms,
+	}
+	defer delete_key(&TRACKS, track_path)
+	expected_gain := track_volume_multiplier(track_active_rms)
 
 	voice := MusicVoice {
 		active     = true,
@@ -248,13 +253,15 @@ music_track_bounds_changed_hash_reports_stale_and_uses_full_track :: proc(t: ^te
 }
 
 @(test)
-music_track_time_is_relative_to_selected_bounds :: proc(t: ^testing.T) {
-	played, length := music_track_time_relative(35, 10, 50)
+music_track_time_uses_elapsed_time_with_selected_length :: proc(t: ^testing.T) {
+	played, length := music_track_time_relative(25, 10, 50)
 	testing.expect_value(t, played, f32(25))
 	testing.expect_value(t, length, f32(40))
 
-	played, _ = music_track_time_relative(5, 10, 50)
+	played, _ = music_track_time_relative(0, 18.385664, 50)
 	testing.expect_value(t, played, f32(0))
+	played, _ = music_track_time_relative(1, 18.385664, 50)
+	testing.expect_value(t, played, f32(1))
 	played, _ = music_track_time_relative(60, 10, 50)
 	testing.expect_value(t, played, f32(40))
 }
