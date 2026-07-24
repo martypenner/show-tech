@@ -30,7 +30,6 @@ import "core:fmt"
 import "core:log"
 import "core:net"
 import "core:os"
-import "core:thread"
 import rl "vendor:raylib"
 
 _ :: log
@@ -43,7 +42,6 @@ GameMemory :: struct {
 	active_tab:     Tab,
 	ui:             UIControls,
 	sound_settings: ^SoundSettings,
-	loader:         ^thread.Thread,
 	lighting:       struct {
 		socket:         Maybe(net.UDP_Socket),
 		endpoint:       net.Endpoint,
@@ -163,11 +161,6 @@ game_should_run :: proc() -> bool {
 
 @(export)
 game_shutdown :: proc() {
-	// If the window closed while still loading, wait for the loader to finish.
-	if gm.loader != nil {
-		thread.destroy(gm.loader)
-		gm.loader = nil
-	}
 	sound_shutdown()
 
 	if socket, ok := gm.lighting.socket.?; ok {
