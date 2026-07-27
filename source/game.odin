@@ -29,8 +29,7 @@ package game
 import "core:fmt"
 import "core:log"
 import "core:net"
-import "core:os"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
 
 _ :: log
 _ :: fmt
@@ -51,33 +50,44 @@ GameMemory :: struct {
 	},
 }
 
+window: ^sdl.Window
+renderer: ^sdl.Renderer
 window_width: i32 = 1280
 window_height: i32 = 720
 
 update :: proc() {
-	when ODIN_DEBUG {
-		if rl.IsKeyPressed(.ESCAPE) {
+	event: sdl.Event
+	for sdl.PollEvent(&event) {
+		if event.type == .QUIT ||
+		   (event.type == .WINDOW_CLOSE_REQUESTED &&
+				   event.window.windowID == sdl.GetWindowID(window)) {
 			gm.should_run = false
+		}
+		when ODIN_DEBUG {
+			if event.type == .KEY_DOWN && event.key.key == sdl.K_ESCAPE {
+				gm.should_run = false
+			}
+		}
+
+		if event.type == .WINDOW_RESIZED {
+			sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
+			controls_prepare_for_render(gm.ui.items[:], window_width, window_height)
 		}
 	}
 
-	if rl.IsWindowResized() {
-		window_width = rl.GetRenderWidth()
-		window_height = rl.GetRenderHeight()
-		controls_prepare_for_render(gm.ui.items[:], window_width, window_height)
-	}
 	sound_update()
 	ui_control_set_value(&gm.ui, .Music_Volume, sound_music_current_volume())
 	lighting_update()
 }
 
 draw :: proc() {
-	rl.BeginDrawing()
-	rl.ClearBackground({16, 16, 16, 255})
+	// TODO:
+	// sdl.SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
+	sdl.SetRenderDrawColor(renderer, 16, 16, 16, 255)
+	sdl.RenderClear(renderer)
+	sdl.RenderPresent(renderer)
 
-	controls_draw()
-
-	rl.EndDrawing()
+	// controls_draw()
 }
 
 @(export)
@@ -91,25 +101,22 @@ game_update :: proc() {
 
 @(export)
 game_init_window :: proc() {
-	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT, .MSAA_4X_HINT})
-	rl.InitWindow(window_width, window_height, "Showtime")
-	when ODIN_OS != .JS do rl.SetWindowPosition(200, 200)
-	// I'd like this to be higher - e.g. 500 for latency purposes - but it eats
-	// more CPU (obviously) on older machines.
-	rl.SetTargetFPS(60)
-	rl.SetExitKey(nil)
-}
+	ensure(sdl.SetAppMetadata("Showtime", "1.0", "showtime"), string(sdl.GetError()))
 
-// GuiLoadStyle only accepts a file path, so write the embedded style next to
-// the running executable (resolves regardless of the working directory). Raygui
-// style is global module state, so hot reload must apply it again after loading
-// a fresh game DLL.
-ui_load_style :: proc() {
-	style_raw := #load("../resources/cyber.rgs")
-	style_path := fmt.ctprint(rl.GetApplicationDirectory(), "cyber.rgs", sep = "")
-	ensure(rl.SaveFileData(style_path, raw_data(style_raw), i32(len(style_raw))))
-	rl.GuiLoadStyle(style_path)
-	os.remove(string(style_path))
+	ensure(sdl.Init({.VIDEO, .AUDIO}))
+	window = sdl.CreateWindow(
+		"Showtime",
+		window_width,
+		window_height,
+		{.RESIZABLE, .HIGH_PIXEL_DENSITY},
+	)
+	ensure(window != nil, string(sdl.GetError()))
+	// Might need to change this for mac
+	renderer = sdl.CreateRenderer(window, "vulkan")
+	ensure(renderer != nil, string(sdl.GetError()))
+	// Might need a way to limit this further to 60 fps consistently
+	sdl.SetRenderVSync(renderer, 1)
+	sdl.SetWindowPosition(window, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED)
 }
 
 game_memory_make :: proc() -> ^GameMemory {
@@ -149,13 +156,6 @@ game_init :: proc() {
 
 @(export)
 game_should_run :: proc() -> bool {
-	when ODIN_OS != .JS {
-		// Never run this proc in browser. It contains a 16 ms sleep on web!
-		if rl.WindowShouldClose() {
-			return false
-		}
-	}
-
 	return gm.should_run
 }
 
@@ -173,7 +173,9 @@ game_shutdown :: proc() {
 
 @(export)
 game_shutdown_window :: proc() {
-	rl.CloseWindow()
+	sdl.DestroyRenderer(renderer)
+	sdl.DestroyWindow(window)
+	sdl.Quit()
 }
 
 @(export)
@@ -190,8 +192,6 @@ game_memory_size :: proc() -> int {
 game_hot_reloaded :: proc(mem: rawptr) {
 	gm = (^GameMemory)(mem)
 
-	ui_load_style()
-
 	// Restore Module-level pointers that point into `gm`. A freshly loaded DLL
 	// starts these globals nil, so they must be re-pointed here before the next
 	// frame uses them.
@@ -200,18 +200,15 @@ game_hot_reloaded :: proc(mem: rawptr) {
 
 @(export)
 game_force_reload :: proc() -> bool {
-	return rl.IsKeyPressed(.F5)
+	return false
 }
 
 @(export)
 game_force_restart :: proc() -> bool {
-	return rl.IsKeyPressed(.F6)
+	return false
 }
 
-// In a web build, this is called when browser changes size. Remove the
-// `rl.SetWindowSize` call if you don't want a resizable game.
+// In a web build, this is called when browser changes size.
 game_parent_window_size_changed :: proc(w, h: int) {
-	window_width = rl.GetRenderWidth()
-	window_height = rl.GetRenderHeight()
-	rl.SetWindowSize(i32(w), i32(h))
+	sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
 }

@@ -4,7 +4,7 @@ import "core:log"
 import "core:math"
 import "core:strconv"
 import "core:strings"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
 
 // UI-owned data lives here, next to the behavior that reads and mutates it. The
 // shared GameMemory holds the controls (the hot-reload persistence shell) but
@@ -61,7 +61,7 @@ Control :: struct {
 	name:             string,
 	name_id:          ControlName,
 	text:             cstring,
-	rect:             rl.Rectangle,
+	rect:             sdl.Rect,
 	state:            Control_State,
 }
 
@@ -114,15 +114,15 @@ List_State :: struct {
 	items:        ListStateItems,
 }
 Scroll_State :: struct {
-	scroll: rl.Vector2,
-	view:   rl.Rectangle,
+	scroll: sdl.Point,
+	view:   sdl.Rect,
 }
 
 Control_State :: union {
 	bool, // CheckBox, Toggle
 	i32, // ToggleGroup, ComboBox
 	f32, // Slider, SliderBar, ProgressBar
-	rl.Color, // ColorPicker
+	sdl.Color, // ColorPicker
 	Choice_State, // DropdownBox
 	Number_State, // Spinner, ValueBox
 	Text_State, // TextBox
@@ -140,7 +140,7 @@ default_control_state :: proc(type: Control_Type) -> Control_State {
 	case .Slider, .SliderBar, .ProgressBar:
 		return 0.5
 	case .ColorPicker:
-		return rl.Color{}
+		return sdl.Color{}
 	case .DropdownBox:
 		return Choice_State{}
 	case .Spinner, .ValueBox:
@@ -175,8 +175,8 @@ controls_prepare_for_render :: proc(controls: []Control, render_width: i32, rend
 		#partial switch control.control_type {
 		case .StatusBar:
 			control.rect.x = 0
-			control.rect.y = f32(render_height) - control.rect.height
-			control.rect.width = f32(render_width)
+			control.rect.y = render_height - control.rect.h
+			control.rect.w = render_width
 		}
 	}
 }
@@ -229,7 +229,7 @@ Layout_Error :: struct {
 
 layout_parse :: proc(text: string) -> (controls: [dynamic]Control, err: Maybe(Layout_Error)) {
 	controls = make([dynamic]Control)
-	anchors := make(map[int][2]f32, context.temp_allocator)
+	anchors := make(map[i32]sdl.Point, context.temp_allocator)
 
 	remaining := text
 	line_no := 0
@@ -247,8 +247,8 @@ layout_parse :: proc(text: string) -> (controls: [dynamic]Control, err: Maybe(La
 				return controls, Layout_Error{line_no, .Too_Few_Fields, line}
 			}
 			id := int_parse(parts[Anchor_Field.Id], line_no) or_return
-			x := f32_parse(parts[Anchor_Field.Pos_X], line_no) or_return
-			y := f32_parse(parts[Anchor_Field.Pos_Y], line_no) or_return
+			x := int_parse(parts[Anchor_Field.Pos_X], line_no) or_return
+			y := int_parse(parts[Anchor_Field.Pos_Y], line_no) or_return
 			anchors[id] = {x, y}
 
 		case .Component:
@@ -258,13 +258,13 @@ layout_parse :: proc(text: string) -> (controls: [dynamic]Control, err: Maybe(La
 				return controls, Layout_Error{line_no, .Too_Few_Fields, line}
 			}
 			type := int_parse(parts[Component_Field.Type], line_no) or_return
-			x := f32_parse(parts[Component_Field.Rect_X], line_no) or_return
-			y := f32_parse(parts[Component_Field.Rect_Y], line_no) or_return
-			w := f32_parse(parts[Component_Field.Rect_W], line_no) or_return
-			h := f32_parse(parts[Component_Field.Rect_H], line_no) or_return
+			x := int_parse(parts[Component_Field.Rect_X], line_no) or_return
+			y := int_parse(parts[Component_Field.Rect_Y], line_no) or_return
+			w := int_parse(parts[Component_Field.Rect_W], line_no) or_return
+			h := int_parse(parts[Component_Field.Rect_H], line_no) or_return
 			anchor_id := int_parse(parts[Component_Field.Anchor_Id], line_no) or_return
 
-			rect := rl.Rectangle{x, y, w, h}
+			rect := sdl.Rect{x, y, w, h}
 			if anchor, has_anchor := anchors[anchor_id]; has_anchor {
 				rect.x += anchor.x
 				rect.y += anchor.y
@@ -290,220 +290,120 @@ layout_parse :: proc(text: string) -> (controls: [dynamic]Control, err: Maybe(La
 }
 
 control_button_pressed :: proc(control: ^Control) -> bool {
-	color_base_prev := rl.GuiGetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-	)
-	color_focused_prev := rl.GuiGetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-	)
-	text_base_prev := rl.GuiGetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL),
-	)
-	text_focused_prev := rl.GuiGetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.TEXT_COLOR_FOCUSED),
-	)
+	// color_base_prev := rl.GuiGetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// )
+	// color_focused_prev := rl.GuiGetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// )
+	// text_base_prev := rl.GuiGetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL),
+	// )
+	// text_focused_prev := rl.GuiGetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.TEXT_COLOR_FOCUSED),
+	// )
 
-	switch control.ui_type {
-	case .Destructive:
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-			i32(rl.ColorToInt(rl.Color{100, 0, 0, 255})),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
-			i32(rl.ColorToInt(rl.Color{120, 0, 0, 255})),
-		)
-	case .Sound:
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-			i32(rl.ColorToInt(rl.Color{0, 80, 0, 255})),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
-			i32(rl.ColorToInt(rl.Color{0, 100, 0, 255})),
-		)
-	case .Lighting:
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-			i32(rl.ColorToInt(rl.Color{160, 180, 0, 255})),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
-			i32(rl.ColorToInt(rl.Color{180, 200, 0, 255})),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL),
-			i32(rl.ColorToInt(rl.DARKGRAY)),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.TEXT_COLOR_FOCUSED),
-			i32(rl.ColorToInt(rl.DARKGRAY)),
-		)
-	case .SoundAndLighting:
-	// default teal
-	case .Game:
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-			i32(rl.ColorToInt(rl.Color{0, 69, 129, 255})),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
-			i32(rl.ColorToInt(rl.Color{0, 111, 208, 255})),
-		)
-	case .Innuendo:
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-			i32(rl.ColorToInt(rl.Color{136, 51, 101, 255})),
-		)
-		rl.GuiSetStyle(
-			rl.GuiControl.BUTTON,
-			i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
-			i32(rl.ColorToInt(rl.Color{207, 80, 154, 255})),
-		)
-	}
+	// switch control.ui_type {
+	// case .Destructive:
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// 		i32(rl.ColorToInt(rl.Color{100, 0, 0, 255})),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
+	// 		i32(rl.ColorToInt(rl.Color{120, 0, 0, 255})),
+	// 	)
+	// case .Sound:
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// 		i32(rl.ColorToInt(rl.Color{0, 80, 0, 255})),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
+	// 		i32(rl.ColorToInt(rl.Color{0, 100, 0, 255})),
+	// 	)
+	// case .Lighting:
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// 		i32(rl.ColorToInt(rl.Color{160, 180, 0, 255})),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
+	// 		i32(rl.ColorToInt(rl.Color{180, 200, 0, 255})),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL),
+	// 		i32(rl.ColorToInt(rl.DARKGRAY)),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.TEXT_COLOR_FOCUSED),
+	// 		i32(rl.ColorToInt(rl.DARKGRAY)),
+	// 	)
+	// case .SoundAndLighting:
+	// // default teal
+	// case .Game:
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// 		i32(rl.ColorToInt(rl.Color{0, 69, 129, 255})),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
+	// 		i32(rl.ColorToInt(rl.Color{0, 111, 208, 255})),
+	// 	)
+	// case .Innuendo:
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// 		i32(rl.ColorToInt(rl.Color{136, 51, 101, 255})),
+	// 	)
+	// 	rl.GuiSetStyle(
+	// 		rl.GuiControl.BUTTON,
+	// 		i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
+	// 		i32(rl.ColorToInt(rl.Color{207, 80, 154, 255})),
+	// 	)
+	// }
 
-	pressed := rl.GuiButton(control.rect, control.text)
-	rl.GuiSetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
-		color_base_prev,
-	)
-	rl.GuiSetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
-		color_focused_prev,
-	)
-	rl.GuiSetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL),
-		text_base_prev,
-	)
-	rl.GuiSetStyle(
-		rl.GuiControl.BUTTON,
-		i32(rl.GuiControlProperty.TEXT_COLOR_FOCUSED),
-		text_focused_prev,
-	)
+	// pressed := rl.GuiButton(control.rect, control.text)
+	// rl.GuiSetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.BASE_COLOR_NORMAL),
+	// 	color_base_prev,
+	// )
+	// rl.GuiSetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.BASE_COLOR_FOCUSED),
+	// 	color_focused_prev,
+	// )
+	// rl.GuiSetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.TEXT_COLOR_NORMAL),
+	// 	text_base_prev,
+	// )
+	// rl.GuiSetStyle(
+	// 	rl.GuiControl.BUTTON,
+	// 	i32(rl.GuiControlProperty.TEXT_COLOR_FOCUSED),
+	// 	text_focused_prev,
+	// )
 
+	pressed := false
 	if pressed {
 		log.debugf("Clicked button %s", control.name)
 	}
 	return pressed
-}
-
-control_draw_passive :: proc(control: ^Control) {
-	switch control.control_type {
-	case .WindowBox:
-		rl.GuiWindowBox(control.rect, control.text)
-	case .GroupBox:
-		rl.GuiGroupBox(control.rect, control.text)
-	case .Line:
-		rl.GuiLine(control.rect, control.text)
-	case .Panel:
-		rl.GuiPanel(control.rect, control.text)
-	case .Label:
-		rl.GuiLabel(control.rect, control.text)
-	case .LabelButton:
-		rl.GuiLabelButton(control.rect, control.text)
-	case .Button:
-		control_button_pressed(control)
-	case .CheckBox:
-		rl.GuiCheckBox(control.rect, control.text, &control.state.(bool))
-	case .Toggle:
-		rl.GuiToggle(control.rect, control.text, &control.state.(bool))
-	case .ToggleGroup:
-		rl.GuiToggleGroup(control.rect, control.text, &control.state.(i32))
-	case .ComboBox:
-		rl.GuiComboBox(control.rect, control.text, &control.state.(i32))
-	case .DropdownBox:
-		s := &control.state.(Choice_State)
-		if (rl.GuiDropdownBox(control.rect, control.text, &s.active, s.edit_mode)) {
-			s.edit_mode = !s.edit_mode
-		}
-	case .TextBox:
-		s := &control.state.(Text_State)
-		if (rl.GuiTextBox(control.rect, cstring(&s.buffer[0]), i32(len(s.buffer)), s.edit_mode)) {
-			s.edit_mode = !s.edit_mode
-		}
-	case .ValueBox:
-		s := &control.state.(Number_State)
-		if (rl.GuiValueBox(control.rect, control.text, &s.value, 0, 100, s.edit_mode)) > 0 {
-			s.edit_mode = !s.edit_mode
-		}
-	case .TextMultiBox:
-	case .Spinner:
-		s := &control.state.(Number_State)
-		if (rl.GuiSpinner(control.rect, control.text, &s.value, 0, 100, s.edit_mode)) > 0 {
-			s.edit_mode = !s.edit_mode
-		}
-	case .Slider:
-		rl.GuiSlider(control.rect, nil, nil, &control.state.(f32), 0, 1)
-	case .SliderBar:
-		rl.GuiSliderBar(control.rect, nil, nil, &control.state.(f32), 0, 1)
-	case .ProgressBar:
-		rl.GuiProgressBar(control.rect, nil, nil, &control.state.(f32), 0, 1)
-	case .StatusBar:
-		if control.name_id == .Status_Bar {
-			music_progress := music_current_progress()
-			music_played, music_length := music_current_time()
-			music_time_text := music_time_pair_label(music_played, music_length)
-			progress_rect := rl.Rectangle {
-				x      = control.rect.x + control.rect.width - 160,
-				y      = control.rect.y + 4,
-				width  = 150,
-				height = control.rect.height - 8,
-			}
-			TIME_LABEL_WIDTH :: f32(90)
-			time_rect := rl.Rectangle {
-				x      = progress_rect.x - TIME_LABEL_WIDTH - 8,
-				y      = control.rect.y,
-				width  = TIME_LABEL_WIDTH,
-				height = control.rect.height,
-			}
-			rl.GuiStatusBar(
-				control.rect,
-				strings.clone_to_cstring(music_current_label(), context.temp_allocator),
-			)
-			rl.GuiProgressBar(progress_rect, nil, nil, &music_progress, 0, 1)
-			rl.GuiLabel(
-				time_rect,
-				strings.clone_to_cstring(music_time_text, context.temp_allocator),
-			)
-		} else {
-			rl.GuiStatusBar(control.rect, control.text)
-		}
-	case .ScrollPanel:
-		s := &control.state.(Scroll_State)
-		rl.GuiScrollPanel(control.rect, control.text, control.rect, &s.scroll, &s.view)
-	case .ListView:
-		s := &control.state.(List_State)
-		rl.GuiListViewEx(
-			control.rect,
-			raw_data(s.items[:]),
-			i32(len(s.items)),
-			&s.scroll_index,
-			&s.active,
-			nil,
-		)
-	case .ColorPicker:
-		rl.GuiColorPicker(control.rect, control.text, &control.state.(rl.Color))
-	case .DummyRect:
-		rl.GuiDummyRec(control.rect, control.text)
-	}
 }
 
 Tab :: enum u8 {
@@ -574,7 +474,7 @@ controls_draw :: proc() {
 		#partial switch action {
 		case .Tab_Bar:
 			prev := control.state.(i32)
-			rl.GuiToggleGroup(control.rect, control.text, &control.state.(i32))
+			// rl.GuiToggleGroup(control.rect, control.text, &control.state.(i32))
 			if prev != control.state.(i32) {
 				index := int(control.state.(i32))
 				switch Tab(index) {
@@ -593,7 +493,7 @@ controls_draw :: proc() {
 			}
 		case .Music_Volume:
 			prev := control.state.(f32)
-			rl.GuiSliderBar(control.rect, nil, nil, &control.state.(f32), 0, 1)
+			// rl.GuiSliderBar(control.rect, nil, nil, &control.state.(f32), 0, 1)
 			if prev != control.state.(f32) {
 				gm.sound_settings.music_volume = control.state.(f32)
 				for &voice in gm.sound_settings.music_voices {
@@ -604,7 +504,7 @@ controls_draw :: proc() {
 			}
 		case .Use_House_Music:
 			prev := control.state.(bool)
-			rl.GuiCheckBox(control.rect, control.text, &control.state.(bool))
+			// rl.GuiCheckBox(control.rect, control.text, &control.state.(bool))
 			if prev != control.state.(bool) {
 				use_house_music := control.state.(bool)
 				if use_house_music {
@@ -987,46 +887,46 @@ controls_draw :: proc() {
 
 		// Music tab
 		case .ChangePlaylist:
-			s := &control.state.(List_State)
-			previous, previous_ok := sound_settings.music_browser_playlist_index.?
-			ensure(previous_ok)
-			active := previous
-			rl.GuiListViewEx(
-				control.rect,
-				raw_data(s.items[:]),
-				i32(len(s.items)),
-				&s.scroll_index,
-				&active,
-				nil,
-			)
-			if previous != active {
-				ensure(active >= 0 && active < i32(len(sound_settings.playlists)))
-				sound_settings.music_browser_playlist_index = active
-				playlist := &sound_settings.playlists[active]
-				ensure(len(playlist.tracks) > 0)
-				sound_settings.music_browser_track_index = i32(0)
-				music_browser_tracks_refresh()
-				wave_editor_track_select(&playlist.tracks[0])
-			}
+		// s := &control.state.(List_State)
+		// previous, previous_ok := sound_settings.music_browser_playlist_index.?
+		// ensure(previous_ok)
+		// active := previous
+		// // rl.GuiListViewEx(
+		// // 	control.rect,
+		// // 	raw_data(s.items[:]),
+		// // 	i32(len(s.items)),
+		// // 	&s.scroll_index,
+		// // 	&active,
+		// // 	nil,
+		// // )
+		// if previous != active {
+		// 	ensure(active >= 0 && active < i32(len(sound_settings.playlists)))
+		// 	sound_settings.music_browser_playlist_index = active
+		// 	playlist := &sound_settings.playlists[active]
+		// 	ensure(len(playlist.tracks) > 0)
+		// 	sound_settings.music_browser_track_index = i32(0)
+		// 	music_browser_tracks_refresh()
+		// 	wave_editor_track_select(&playlist.tracks[0])
+		// }
 		case .ChangeTrack:
-			s := &control.state.(List_State)
-			previous, previous_ok := sound_settings.music_browser_track_index.?
-			ensure(previous_ok)
-			active := previous
-			rl.GuiListViewEx(
-				control.rect,
-				raw_data(s.items[:]),
-				i32(len(s.items)),
-				&s.scroll_index,
-				&active,
-				nil,
-			)
-			playlist := music_browser_playlist_selected()
-			if previous != active {
-				ensure(active >= 0 && active < i32(len(playlist.tracks)))
-				sound_settings.music_browser_track_index = active
-				wave_editor_track_select(&playlist.tracks[active])
-			}
+		// s := &control.state.(List_State)
+		// previous, previous_ok := sound_settings.music_browser_track_index.?
+		// ensure(previous_ok)
+		// active := previous
+		// rl.GuiListViewEx(
+		// 	control.rect,
+		// 	raw_data(s.items[:]),
+		// 	i32(len(s.items)),
+		// 	&s.scroll_index,
+		// 	&active,
+		// 	nil,
+		// )
+		// playlist := music_browser_playlist_selected()
+		// if previous != active {
+		// 	ensure(active >= 0 && active < i32(len(playlist.tracks)))
+		// 	sound_settings.music_browser_track_index = active
+		// 	wave_editor_track_select(&playlist.tracks[active])
+		// }
 		case .WavePreview:
 			if wave_editor_preview_is_playing() {
 				control.text = "Stop"
@@ -1041,14 +941,37 @@ controls_draw :: proc() {
 					wave_editor_preview_start(music_browser_track_selected())
 				}
 			}
-
-		case:
-			control_draw_passive(&control)
+		case .Status_Bar:
+		// music_progress := music_current_progress()
+		// music_played, music_length := music_current_time()
+		// music_time_text := music_time_pair_label(music_played, music_length)
+		// progress_rect := sdl.Rect {
+		// 	x = control.rect.x + control.rect.w - 160,
+		// 	y = control.rect.y + 4,
+		// 	w = 150,
+		// 	h = control.rect.h - 8,
+		// }
+		// TIME_LABEL_WIDTH :: 90
+		// time_rect := sdl.Rect {
+		// 	x = progress_rect.x - TIME_LABEL_WIDTH - 8,
+		// 	y = control.rect.y,
+		// 	w = TIME_LABEL_WIDTH,
+		// 	h = control.rect.h,
+		// }
+		// rl.GuiStatusBar(
+		// 	control.rect,
+		// 	strings.clone_to_cstring(music_current_label(), context.temp_allocator),
+		// )
+		// rl.GuiProgressBar(progress_rect, nil, nil, &music_progress, 0, 1)
+		// rl.GuiLabel(
+		// 	time_rect,
+		// 	strings.clone_to_cstring(music_time_text, context.temp_allocator),
+		// )
 		}
 	}
 
 	if gm.active_tab == .Music {
-		wave_editor()
+		// wave_editor()
 	}
 }
 
@@ -1116,21 +1039,12 @@ music_browser_tracks_refresh :: proc() {
 }
 
 @(private)
-int_parse :: proc(s: string, line_no: int) -> (int, Maybe(Layout_Error)) {
+int_parse :: proc(s: string, line_no: int) -> (i32, Maybe(Layout_Error)) {
 	value, ok := strconv.parse_int(s)
 	if !ok {
 		return 0, Layout_Error{line_no, .Invalid_Int, s}
 	}
-	return value, nil
-}
-
-@(private)
-f32_parse :: proc(s: string, line_no: int) -> (f32, Maybe(Layout_Error)) {
-	value, ok := strconv.parse_f64(s)
-	if !ok {
-		return 0, Layout_Error{line_no, .Invalid_Float, s}
-	}
-	return f32(value), nil
+	return i32(value), nil
 }
 
 @(private)
