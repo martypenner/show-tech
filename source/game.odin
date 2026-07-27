@@ -26,6 +26,9 @@ created.
 
 package game
 
+import imgui "../vendor/odin-imgui"
+import imsdl3 "../vendor/odin-imgui/imgui_impl_sdl3"
+import imsdlrenderer3 "../vendor/odin-imgui/imgui_impl_sdlrenderer3"
 import "core:fmt"
 import "core:log"
 import "core:net"
@@ -52,12 +55,15 @@ GameMemory :: struct {
 
 window: ^sdl.Window
 renderer: ^sdl.Renderer
+io: ^imgui.IO
 window_width: i32 = 1280
 window_height: i32 = 720
 
 update :: proc() {
 	event: sdl.Event
 	for sdl.PollEvent(&event) {
+		imsdl3.ProcessEvent(&event)
+
 		if event.type == .QUIT ||
 		   (event.type == .WINDOW_CLOSE_REQUESTED &&
 				   event.window.windowID == sdl.GetWindowID(window)) {
@@ -81,10 +87,24 @@ update :: proc() {
 }
 
 draw :: proc() {
-	// TODO:
-	// sdl.SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
+	imsdlrenderer3.NewFrame()
+	imsdl3.NewFrame()
+	imgui.NewFrame()
+
+	imgui.ShowDemoWindow()
+
+	if imgui.Begin("Window containing a quit button") {
+		if imgui.Button("The quit button in question") {
+			gm.should_run = false
+		}
+	}
+	imgui.End()
+
+	imgui.Render()
+	sdl.SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
 	sdl.SetRenderDrawColor(renderer, 16, 16, 16, 255)
 	sdl.RenderClear(renderer)
+	imsdlrenderer3.RenderDrawData(imgui.GetDrawData(), renderer)
 	sdl.RenderPresent(renderer)
 
 	// controls_draw()
@@ -104,11 +124,12 @@ game_init_window :: proc() {
 	ensure(sdl.SetAppMetadata("Showtime", "1.0", "showtime"), string(sdl.GetError()))
 
 	ensure(sdl.Init({.VIDEO, .AUDIO}))
+	main_scale := sdl.GetDisplayContentScale(sdl.GetPrimaryDisplay())
 	window = sdl.CreateWindow(
 		"Showtime",
 		window_width,
 		window_height,
-		{.RESIZABLE, .HIGH_PIXEL_DENSITY},
+		{.RESIZABLE, .HIDDEN, .HIGH_PIXEL_DENSITY},
 	)
 	ensure(window != nil, string(sdl.GetError()))
 	// Might need to change this for mac
@@ -117,6 +138,21 @@ game_init_window :: proc() {
 	// Might need a way to limit this further to 60 fps consistently
 	sdl.SetRenderVSync(renderer, 1)
 	sdl.SetWindowPosition(window, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED)
+	sdl.ShowWindow(window)
+
+	// Setup Dear ImGui context
+	imgui.CHECKVERSION()
+	imgui.CreateContext()
+	io = imgui.GetIO()
+	io.ConfigFlags += {.NavEnableKeyboard, .DockingEnable}
+
+	imgui.StyleColorsDark()
+	style := imgui.GetStyle()
+	imgui.Style_ScaleAllSizes(style, main_scale)
+	style.FontScaleDpi = main_scale
+
+	imsdl3.InitForSDLRenderer(window, renderer)
+	imsdlrenderer3.Init(renderer)
 }
 
 game_memory_make :: proc() -> ^GameMemory {
@@ -173,6 +209,10 @@ game_shutdown :: proc() {
 
 @(export)
 game_shutdown_window :: proc() {
+	imsdlrenderer3.Shutdown()
+	imsdl3.Shutdown()
+	imgui.DestroyContext()
+
 	sdl.DestroyRenderer(renderer)
 	sdl.DestroyWindow(window)
 	sdl.Quit()
