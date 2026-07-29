@@ -26,7 +26,7 @@ run: clean
 	echo "Game window closed, stopping watch."; \
 	rm -f $(PIDFILE)
 
-test: generate-enums
+test:
 	./scripts/test.sh
 
 format:

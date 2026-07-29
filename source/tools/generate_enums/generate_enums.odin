@@ -1,9 +1,11 @@
 package generate_enums
 
 import "core:c"
+import "core:crypto/hash"
 import "core:encoding/json"
 import "core:fmt"
-import "core:hash"
+import "core:hash/xxhash"
+import "core:io"
 import "core:log"
 import "core:math"
 import "core:mem"
@@ -31,14 +33,9 @@ SoundEffect :: struct {
 	path:  string,
 }
 
-ControlNameEntry :: struct {
-	ident: string,
-	name:  string,
-}
-
 GeneratedTrack :: struct {
 	path:             string,
-	file_hash:        string,
+	file_hash:        FileHash,
 	active_rms:       f32,
 	duration_seconds: f32,
 	waveform_samples: [TRACK_WAVEFORM_SAMPLE_COUNT]i8,
@@ -54,11 +51,13 @@ RMSCache :: struct {
 }
 
 RMSCacheEntry :: struct {
-	file_hash:        string,
+	file_hash:        FileHash,
 	active_rms:       f32,
 	duration_seconds: f32,
 	waveform_samples: [TRACK_WAVEFORM_SAMPLE_COUNT]i8,
 }
+
+FileHash :: distinct xxhash.XXH3_128_hash
 
 MUSIC_ACTIVE_SAMPLE_GATE :: f32(0.02)
 MUSIC_ACTIVE_RMS_WINDOW_SECONDS :: f64(0.05)
@@ -70,10 +69,19 @@ main :: proc() {
 	ensure(mixer.Init(), string(sdl.GetError()))
 	defer mixer.Quit()
 
+	scratch: mem.Dynamic_Arena
+	mem.dynamic_arena_init(&scratch)
+	defer mem.dynamic_arena_destroy(&scratch)
+	thread_allocator := mem.dynamic_arena_allocator(&scratch)
+	context.allocator = thread_allocator
+
 	rms_cache := load_rms_cache()
 	defer delete(rms_cache.tracks)
 
-	entries, err := os.read_all_directory_by_path(MUSIC_DIR, context.temp_allocator)
+	mutex: sync.Mutex
+	failed := false
+
+	entries, err := os.read_all_directory_by_path(MUSIC_DIR, context.allocator)
 	if err != nil {
 		fmt.eprintf("Error reading %s: %v\n", MUSIC_DIR, err)
 		os.exit(1)
@@ -89,18 +97,10 @@ main :: proc() {
 	pool: thread.Pool
 	thread.pool_init(
 		&pool,
-		context.temp_allocator,
+		thread_allocator,
 		min(os.get_processor_core_count(), TRACK_ANALYSIS_THREAD_COUNT),
 	)
 	defer thread.pool_destroy(&pool)
-
-	scratch: mem.Dynamic_Arena
-	mem.dynamic_arena_init(&scratch)
-	defer mem.dynamic_arena_destroy(&scratch)
-	thread_allocator := mem.dynamic_arena_allocator(&scratch)
-
-	mutex: sync.Mutex
-	failed := false
 
 	PoolData :: struct {
 		path:      string,
@@ -115,7 +115,7 @@ main :: proc() {
 		if len(entry.name) > 0 && entry.name[0] == '.' do continue
 
 		ident := playlist_ident(entry.name, context.allocator)
-		if len(ident) == 0 do continue
+		ensure(len(ident) > 0)
 
 		base := ident
 		suffix := 2
@@ -139,7 +139,7 @@ main :: proc() {
 			if !track_file_supported(track_entry.name) do continue
 
 			path := fmt.aprintf("%s/%s/%s", MUSIC_DIR, entry.name, track_entry.name)
-			data := new(PoolData, context.temp_allocator)
+			data := new(PoolData)
 			data^ = PoolData {
 				path      = path,
 				rms_cache = rms_cache,
@@ -149,19 +149,40 @@ main :: proc() {
 			}
 			thread.pool_add_task(&pool, context.allocator, proc(t: thread.Task) {
 					data := (^PoolData)(t.data)
-					track_bytes, read_err := os.read_entire_file(data.path, context.allocator)
-					if read_err != nil {
-						fmt.eprintf("Error reading track %s: %v\n", data.path, read_err)
+
+					file, open_err := os.open(data.path)
+					if open_err != nil {
+						fmt.eprintf("Error reading track %s: %v\n", data.path, open_err)
 						sync.guard(data.mutex)
 						data.failed^ = true
 						return
 					}
 
-					file_hash := fmt.tprint(hash.murmur64a(track_bytes))
-					cache_entry := track_cache_entry_resolve(data.path, file_hash, data.rms_cache)
+					state: xxhash.XXH3_state
+					xxhash.XXH3_128_reset(&state)
+					buf: [256]byte
+					for {
+						n, err := io.read(os.to_stream(file), buf[:])
+						if n > 0 {xxhash.XXH3_128_update(&state, buf[:n])}
+						if err == .EOF {break}
+						if err != .None {
+							fmt.eprintf("Error reading track %s: %v\n", data.path, err)
+							sync.guard(data.mutex)
+							data.failed^ = true
+							return
+						}
+					}
+					os.close(file)
+
+					digest := xxhash.XXH3_128_digest(&state)
+					cache_entry := track_cache_entry_resolve(
+						data.path,
+						FileHash(digest),
+						data.rms_cache,
+					)
 					track := GeneratedTrack {
 						path             = strings.clone(data.path),
-						file_hash        = strings.clone(file_hash),
+						file_hash        = FileHash(digest),
 						active_rms       = cache_entry.active_rms,
 						duration_seconds = cache_entry.duration_seconds,
 						waveform_samples = cache_entry.waveform_samples,
@@ -169,6 +190,8 @@ main :: proc() {
 
 					sync.guard(data.mutex)
 					append(data.tracks, track)
+
+					free_all(context.temp_allocator)
 				}, data)
 		}
 	}
@@ -225,7 +248,7 @@ main :: proc() {
 	fmt.sbprintln(&builder, "TRACKS := map[string]GeneratedTrack {")
 	for track in tracks {
 		fmt.sbprintf(&builder, "\t%q = {{\n", track.path)
-		fmt.sbprintf(&builder, "\t\tfile_hash = %q,\n", track.file_hash)
+		fmt.sbprintf(&builder, "\t\tfile_hash = %q,\n", fmt.aprintf("%v", u128(track.file_hash)))
 		fmt.sbprintf(&builder, "\t\tactive_rms = %.8f,\n", track.active_rms)
 		fmt.sbprintf(&builder, "\t\tduration_seconds = %.8f,\n", track.duration_seconds)
 		fmt.sbprintln(&builder, "\t\twaveform_samples = {")
@@ -311,7 +334,7 @@ load_sound_effects :: proc() -> [dynamic]SoundEffect {
 
 track_cache_entry_resolve :: proc(
 	path: string,
-	file_hash: string,
+	file_hash: FileHash,
 	cache: RMSCache,
 ) -> RMSCacheEntry {
 	entry, ok := cache.tracks[path]
@@ -392,31 +415,45 @@ default_rms_cache :: proc() -> RMSCache {
 	}
 }
 
-track_cache_entry_generate :: proc(path: string, file_hash: string) -> RMSCacheEntry {
-	decoder := mixer.CreateAudioDecoder(strings.clone_to_cstring(path, context.temp_allocator), 0)
-	ensure(decoder != nil, fmt.tprintf("Invalid music track %s: %s", path, sdl.GetError()))
-	defer mixer.DestroyAudioDecoder(decoder)
-
+track_cache_entry_generate :: proc(path: string, file_hash: FileHash) -> RMSCacheEntry {
+	path_cstring := strings.clone_to_cstring(path, context.temp_allocator)
 	spec: sdl.AudioSpec
+
+	// Pass 1: count total frames without buffering.
+	decoder := mixer.CreateAudioDecoder(path_cstring, 0)
+	ensure(decoder != nil, fmt.tprintf("Invalid music track %s: %s", path, sdl.GetError()))
 	ensure(mixer.GetAudioDecoderFormat(decoder, &spec), string(sdl.GetError()))
 	spec.format = .F32
 	channels := int(spec.channels)
 	sample_rate := int(spec.freq)
 	ensure(channels > 0 && sample_rate > 0, fmt.tprintf("Invalid music format: %s", path))
-	samples: [dynamic]f32
-	defer delete(samples)
-	buffer: [4096]f32
+
+	total_samples := 0
+	count_buffer: [4096]f32
 	for {
-		byte_count := mixer.DecodeAudio(decoder, &buffer[0], c.int(size_of(buffer)), spec)
+		byte_count := mixer.DecodeAudio(
+			decoder,
+			&count_buffer[0],
+			c.int(size_of(count_buffer)),
+			spec,
+		)
 		ensure(
 			byte_count >= 0,
 			fmt.tprintf("Couldn't decode music samples %s: %s", path, sdl.GetError()),
 		)
 		if byte_count == 0 do break
-		append(&samples, ..buffer[:int(byte_count) / size_of(f32)])
+		total_samples += int(byte_count) / size_of(f32)
 	}
-	frames := len(samples) / channels
-	ensure(frames > 0, fmt.tprintf("Empty music track: %s", path))
+	mixer.DestroyAudioDecoder(decoder)
+	total_frames := total_samples / channels
+	ensure(total_frames > 0, fmt.tprintf("Empty music track: %s", path))
+
+	// Pass 2: streaming RMS and waveform extraction.
+	decoder = mixer.CreateAudioDecoder(path_cstring, 0)
+	ensure(decoder != nil, fmt.tprintf("Invalid music track %s: %s", path, sdl.GetError()))
+	ensure(mixer.GetAudioDecoderFormat(decoder, &spec), string(sdl.GetError()))
+	spec.format = .F32
+	defer mixer.DestroyAudioDecoder(decoder)
 
 	window_frames := max(int(f64(sample_rate) * MUSIC_ACTIVE_RMS_WINDOW_SECONDS), 1)
 	active_min_frames := int(f64(sample_rate) * MUSIC_MIN_ACTIVE_RMS_SECONDS)
@@ -425,38 +462,79 @@ track_cache_entry_generate :: proc(path: string, file_hash: string) -> RMSCacheE
 	window_power_sum: f64
 	window_frame_count: int
 
-	for frame in 0 ..< frames {
-		frame_power: f64
-		for channel in 0 ..< channels {
-			sample := f64(samples[frame * channels + channel])
-			frame_power += sample * sample
-		}
-		frame_power /= f64(channels)
-		window_power_sum += frame_power
-		window_frame_count += 1
-
-		if window_frame_count >= window_frames || frame == frames - 1 {
-			window_rms := math.sqrt(window_power_sum / f64(window_frame_count))
-			if window_rms >= f64(MUSIC_ACTIVE_SAMPLE_GATE) {
-				active_power_sum += window_power_sum
-				active_frame_count += window_frame_count
-			}
-			window_power_sum = 0
-			window_frame_count = 0
-		}
+	waveform_targets: [TRACK_WAVEFORM_SAMPLE_COUNT]int
+	for i in 0 ..< TRACK_WAVEFORM_SAMPLE_COUNT {
+		waveform_targets[i] = i * total_frames / TRACK_WAVEFORM_SAMPLE_COUNT
 	}
 
 	entry := RMSCacheEntry {
 		file_hash        = file_hash,
-		duration_seconds = f32(frames) / f32(sample_rate),
-	}
-	if active_frame_count >= active_min_frames {
-		entry.active_rms = f32(math.sqrt(active_power_sum / f64(active_frame_count)))
+		duration_seconds = f32(total_frames) / f32(sample_rate),
 	}
 
-	for &sample, sample_index in entry.waveform_samples {
-		frame := sample_index * frames / TRACK_WAVEFORM_SAMPLE_COUNT
-		sample = i8(math.clamp(samples[frame * channels] * 127, -127, 127))
+	current_frame := 0
+	next_waveform_bucket := 0
+	decode_buffer: [4096]f32
+	for {
+		byte_count := mixer.DecodeAudio(
+			decoder,
+			&decode_buffer[0],
+			c.int(size_of(decode_buffer)),
+			spec,
+		)
+		ensure(
+			byte_count >= 0,
+			fmt.tprintf("Couldn't decode music samples %s: %s", path, sdl.GetError()),
+		)
+		if byte_count == 0 do break
+		chunk_frames := int(byte_count) / size_of(f32) / channels
+
+		for f in 0 ..< chunk_frames {
+			abs_frame := current_frame + f
+			base := f * channels
+
+			frame_power: f64
+			for c in 0 ..< channels {
+				sample := f64(decode_buffer[base + c])
+				frame_power += sample * sample
+			}
+			frame_power /= f64(channels)
+			window_power_sum += frame_power
+			window_frame_count += 1
+
+			if window_frame_count >= window_frames || abs_frame == total_frames - 1 {
+				window_rms := math.sqrt(window_power_sum / f64(window_frame_count))
+				if window_rms >= f64(MUSIC_ACTIVE_SAMPLE_GATE) {
+					active_power_sum += window_power_sum
+					active_frame_count += window_frame_count
+				}
+				window_power_sum = 0
+				window_frame_count = 0
+			}
+
+			for next_waveform_bucket < TRACK_WAVEFORM_SAMPLE_COUNT &&
+			    abs_frame >= waveform_targets[next_waveform_bucket] {
+				entry.waveform_samples[next_waveform_bucket] = i8(
+					math.clamp(decode_buffer[base] * 127, -127, 127),
+				)
+				next_waveform_bucket += 1
+			}
+		}
+		current_frame += chunk_frames
+	}
+
+	ensure(
+		current_frame == total_frames,
+		fmt.tprintf(
+			"Music frame count changed between decode passes %s: %d != %d",
+			path,
+			current_frame,
+			total_frames,
+		),
+	)
+
+	if active_frame_count >= active_min_frames {
+		entry.active_rms = f32(math.sqrt(active_power_sum / f64(active_frame_count)))
 	}
 	return entry
 }
