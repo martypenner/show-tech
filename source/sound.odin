@@ -38,6 +38,7 @@ SoundSettings :: struct {
 	normalize_volume:             bool,
 	target_loudness:              f32,
 	music_track_bounds:           map[string]MusicTrackBounds,
+	played_track_paths:           map[string]bool,
 	playlists:                    Playlists `json:"-"`,
 	current_playing_playlist:     ^Playlist `json:"-"`,
 	music_playback_primary:       ^MusicPlayback `json:"-"`,
@@ -347,6 +348,9 @@ sound_settings_load_from_disk :: proc() -> SoundSettings {
 	}
 	if settings.music_track_bounds == nil {
 		settings.music_track_bounds = make(map[string]MusicTrackBounds)
+	}
+	if settings.played_track_paths == nil {
+		settings.played_track_paths = make(map[string]bool)
 	}
 	return settings
 }
@@ -669,6 +673,7 @@ music_playback_start_playlist_track :: proc(
 	sound_settings.current_playing_playlist = playlist
 	sound_settings.music_playback_primary = playback
 	track.played = true
+	sound_settings.settings_save_time_left = SOUND_SETTINGS_SAVE_DEBOUNCE_DURATION
 	playlist.last_played_track = playlist.current_playing_track
 	playlist.current_playing_track = track
 	return playback
@@ -822,6 +827,13 @@ sound_settings_filename :: proc() -> string {
 }
 
 sound_settings_save :: proc() {
+	played_track_paths := make(map[string]bool, context.temp_allocator)
+	for &playlist in sound_settings.playlists {
+		for &track in playlist.tracks {
+			if track.played do played_track_paths[track.path] = true
+		}
+	}
+
 	settings := SoundSettings {
 		use_house_music    = sound_settings.use_house_music,
 		fade_in_time       = sound_settings.fade_in_time,
@@ -832,6 +844,7 @@ sound_settings_save :: proc() {
 		normalize_volume   = sound_settings.normalize_volume,
 		target_loudness    = sound_settings.target_loudness,
 		music_track_bounds = sound_settings.music_track_bounds,
+		played_track_paths = played_track_paths,
 	}
 
 	settings_json, json_err := json.marshal(
@@ -864,6 +877,13 @@ sound_settings_init :: proc() -> ^SoundSettings {
 	ensure(sound_settings.mixer != nil)
 	sound_settings.update_ticks = sdl.GetTicks()
 	sound_settings.playlists = playlists_load()
+	for &playlist in sound_settings.playlists {
+		for &track in playlist.tracks {
+			if _, ok := sound_settings.played_track_paths[track.path]; ok {
+				track.played = true
+			}
+		}
+	}
 	for _, playlist_index in sound_settings.playlists {
 		sound_settings.music_browser_playlist_index = i32(playlist_index)
 		sound_settings.music_browser_track_index = i32(0)
