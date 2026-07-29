@@ -1,5 +1,6 @@
 package generate_enums
 
+import "core:c"
 import "core:encoding/json"
 import "core:fmt"
 import "core:hash"
@@ -11,7 +12,8 @@ import "core:slice"
 import "core:strings"
 import "core:sync"
 import "core:thread"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
+import mixer "vendor:sdl3/mixer"
 
 MUSIC_DIR :: "assets/sounds/music"
 FX_DIR :: "assets/sounds/fx"
@@ -65,6 +67,9 @@ TRACK_WAVEFORM_SAMPLE_COUNT :: 1024
 TRACK_ANALYSIS_THREAD_COUNT :: 2
 
 main :: proc() {
+	ensure(mixer.Init(), string(sdl.GetError()))
+	defer mixer.Quit()
+
 	rms_cache := load_rms_cache()
 	defer delete(rms_cache.tracks)
 
@@ -462,7 +467,7 @@ save_rms_cache :: proc(tracks: []GeneratedTrack) {
 
 default_rms_cache :: proc() -> RMSCache {
 	return RMSCache {
-		version = 4,
+		version = 5,
 		waveform_sample_count = TRACK_WAVEFORM_SAMPLE_COUNT,
 		active_sample_gate = MUSIC_ACTIVE_SAMPLE_GATE,
 		active_rms_window_seconds = MUSIC_ACTIVE_RMS_WINDOW_SECONDS,
@@ -472,24 +477,33 @@ default_rms_cache :: proc() -> RMSCache {
 }
 
 track_cache_entry_generate :: proc(path: string, file_hash: string) -> RMSCacheEntry {
-	wave := rl.LoadWave(strings.clone_to_cstring(path, context.temp_allocator))
-	ensure(rl.IsWaveValid(wave), fmt.tprintf("Invalid music track: %s", path))
-	defer rl.UnloadWave(wave)
+	decoder := mixer.CreateAudioDecoder(strings.clone_to_cstring(path, context.temp_allocator), 0)
+	ensure(decoder != nil, fmt.tprintf("Invalid music track %s: %s", path, sdl.GetError()))
+	defer mixer.DestroyAudioDecoder(decoder)
 
-	samples := rl.LoadWaveSamples(wave)
-	ensure(samples != nil, fmt.tprintf("Couldn't load music samples: %s", path))
-	defer rl.UnloadWaveSamples(samples)
+	spec: sdl.AudioSpec
+	ensure(mixer.GetAudioDecoderFormat(decoder, &spec), string(sdl.GetError()))
+	spec.format = .F32
+	channels := int(spec.channels)
+	sample_rate := int(spec.freq)
+	ensure(channels > 0 && sample_rate > 0, fmt.tprintf("Invalid music format: %s", path))
+	samples: [dynamic]f32
+	defer delete(samples)
+	buffer: [4096]f32
+	for {
+		byte_count := mixer.DecodeAudio(decoder, &buffer[0], c.int(size_of(buffer)), spec)
+		ensure(
+			byte_count >= 0,
+			fmt.tprintf("Couldn't decode music samples %s: %s", path, sdl.GetError()),
+		)
+		if byte_count == 0 do break
+		append(&samples, ..buffer[:int(byte_count) / size_of(f32)])
+	}
+	frames := len(samples) / channels
+	ensure(frames > 0, fmt.tprintf("Empty music track: %s", path))
 
-	channels := int(wave.channels)
-	frames := int(wave.frameCount)
-	sample_rate := int(wave.sampleRate)
-	ensure(
-		channels > 0 && frames > 0 && sample_rate > 0,
-		fmt.tprintf("Empty music track: %s", path),
-	)
-
-	window_frames := max(int(f64(wave.sampleRate) * MUSIC_ACTIVE_RMS_WINDOW_SECONDS), 1)
-	active_min_frames := int(f64(wave.sampleRate) * MUSIC_MIN_ACTIVE_RMS_SECONDS)
+	window_frames := max(int(f64(sample_rate) * MUSIC_ACTIVE_RMS_WINDOW_SECONDS), 1)
+	active_min_frames := int(f64(sample_rate) * MUSIC_MIN_ACTIVE_RMS_SECONDS)
 	active_power_sum: f64
 	active_frame_count: int
 	window_power_sum: f64

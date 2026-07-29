@@ -50,7 +50,7 @@ echo %PDB_NUMBER% > %GAME_PDBS_DIR%\pdb_number
 :: Also note that we always write game.dll to the same file. game_hot_reload.exe
 :: monitors this file and does the hot reload when it changes.
 echo Building game.dll
-odin build source -strict-style -vet -debug -define:RAYLIB_SHARED=true -build-mode:dll -out:%OUT_DIR%/game.dll -pdb-name:%GAME_PDBS_DIR%\game_%PDB_NUMBER%.pdb > nul
+odin build source -strict-style -vet -debug -build-mode:dll -out:%OUT_DIR%/game.dll -pdb-name:%GAME_PDBS_DIR%\game_%PDB_NUMBER%.pdb > nul
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 :: If game.exe already running: Then only compile game.dll and exit cleanly
@@ -63,24 +63,7 @@ echo Building %EXE%
 odin build source\main_hot_reload -strict-style -vet -debug -out:%EXE_PATH% -pdb-name:%OUT_DIR%\main_hot_reload.pdb
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
-set ODIN_PATH=
-for /f "delims=" %%i in ('odin root') do set "ODIN_PATH=%%i"
-
-:: raylib.dll must sit next to the exe (in build\) because Windows searches the
-:: executable's own directory when game.dll loads its raylib dependency.
-if not exist "build\raylib.dll" (
-	if exist "%ODIN_PATH%\vendor\raylib\windows\raylib.dll" (
-		echo raylib.dll not found in build\. Copying from %ODIN_PATH%\vendor\raylib\windows\raylib.dll
-		copy "%ODIN_PATH%\vendor\raylib\windows\raylib.dll" build\
-		IF %ERRORLEVEL% NEQ 0 exit /b 1
-	) else (
-		echo "Please copy raylib.dll from <your_odin_compiler>/vendor/raylib/windows/raylib.dll into the build\ directory"
-		exit /b 1
-	)
-)
-
 if "%~1"=="run" (
 	echo Running %EXE%...
 	start %EXE_PATH%
 )
-

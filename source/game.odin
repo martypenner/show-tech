@@ -41,8 +41,6 @@ gm: ^GameMemory
 
 GameMemory :: struct {
 	should_run:     bool,
-	active_tab:     Tab,
-	ui:             UIControls,
 	sound_settings: ^SoundSettings,
 	lighting:       struct {
 		socket:         Maybe(net.UDP_Socket),
@@ -59,7 +57,15 @@ io: ^imgui.IO
 window_width: i32 = 1280
 window_height: i32 = 720
 
+@(private = "file")
+last_time: u64
+dt: f32
+
 update :: proc() {
+	current_time := sdl.GetTicks()
+	dt = f32(current_time - last_time) / 1000 // Convert milliseconds to seconds
+	last_time = current_time
+
 	event: sdl.Event
 	for sdl.PollEvent(&event) {
 		imsdl3.ProcessEvent(&event)
@@ -77,12 +83,12 @@ update :: proc() {
 
 		if event.type == .WINDOW_RESIZED {
 			sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
-			controls_prepare_for_render(gm.ui.items[:], window_width, window_height)
+			// controls_prepare_for_render(gm.ui.items[:], window_width, window_height)
 		}
 	}
 
 	sound_update()
-	ui_control_set_value(&gm.ui, .Music_Volume, sound_music_current_volume())
+	// ui_control_set_value(&gm.ui, .Music_Volume, sound_music_current_volume())
 	lighting_update()
 }
 
@@ -91,15 +97,7 @@ draw :: proc() {
 	imsdl3.NewFrame()
 	imgui.NewFrame()
 
-	imgui.ShowDemoWindow()
-
-	if imgui.Begin("Window containing a quit button") {
-		if imgui.Button("The quit button in question") {
-			gm.should_run = false
-		}
-	}
-	imgui.End()
-
+	controls_draw()
 	imgui.Render()
 	sdl.SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
 	sdl.SetRenderDrawColor(renderer, 16, 16, 16, 255)
@@ -107,7 +105,6 @@ draw :: proc() {
 	imsdlrenderer3.RenderDrawData(imgui.GetDrawData(), renderer)
 	sdl.RenderPresent(renderer)
 
-	// controls_draw()
 }
 
 @(export)
@@ -168,15 +165,6 @@ game_init :: proc() {
 	gm = game_memory_make()
 
 	gm.sound_settings = sound_settings_init()
-
-	gm.ui = ui_controls_make(layout_build())
-	ui_control_set_value(&gm.ui, .Use_House_Music, gm.sound_settings.use_house_music)
-	for &control in gm.ui.items {
-		control.ui_type = ui_resolve_type(control.name_id)
-	}
-
-	music_browser_playlists_refresh()
-	music_browser_tracks_refresh()
 
 	endpoint, endpoint_ok := net.parse_endpoint("127.0.0.1:42000")
 	log.ensuref(endpoint_ok, "Error parsing endpoint", endpoint)

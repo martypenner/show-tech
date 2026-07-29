@@ -8,7 +8,7 @@ import game ".."
 import "core:log"
 import "core:mem"
 import "core:os"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
 
 _ :: mem
 
@@ -17,7 +17,14 @@ USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, false)
 main :: proc() {
 	// Set working dir to dir of executable so relative asset paths resolve
 	// regardless of where the app is launched from.
-	rl.ChangeDirectory(rl.GetApplicationDirectory())
+	base_path := sdl.GetBasePath()
+	ensure(base_path != nil, string(sdl.GetError()))
+	working_directory_err := os.set_working_directory(string(base_path))
+	log.ensuref(
+		working_directory_err == os.ERROR_NONE,
+		"Failed to set working directory: %v",
+		working_directory_err,
+	)
 
 	mode := os.Permissions{.Read_User, .Write_User, .Read_Group, .Read_Other}
 	logh, logh_err := os.open("log.txt", {.Create, .Trunc, .Read, .Write}, mode)

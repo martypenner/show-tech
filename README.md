@@ -1,6 +1,6 @@
-# Odin + Raylib + Hot Reload template
+# Showtime
 
-This is an [Odin](https://github.com/odin-lang/Odin) + [Raylib](https://github.com/raysan5/raylib) game template with [Hot Reloading](http://zylinski.se/posts/hot-reload-gameplay-code/) pre-setup. It makes it possible to reload gameplay code while the game is running.
+This is an [Odin](https://github.com/odin-lang/Odin) app using SDL3 and SDL3_mixer on desktop, with [hot reloading](http://zylinski.se/posts/hot-reload-gameplay-code/) pre-setup. The web build continues to use Raylib.
 
 Supported platforms: Windows, macOS, Linux and [web](#web-build).
 
@@ -42,7 +42,7 @@ Run `build_release.bat` to create a release build in `build/release`. That exe d
 ### Web build requirements
 
 - Emscripten. Download and install somewhere on your computer. Follow the instructions here: <https://emscripten.org/docs/getting_started/downloads.html> (follow the stuff under "Installation instructions using the emsdk (recommended)").
-- Recent Odin compiler: This uses Raylib binding changes that were done on January 1, 2025.
+- Recent Odin compiler with the Raylib web bindings.
 
 ### Web build quick start
 

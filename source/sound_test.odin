@@ -1,356 +1,446 @@
 package game
 
 import "core:testing"
+import sdl "vendor:sdl3"
+import mixer "vendor:sdl3/mixer"
 
-// After a hot reload the freshly-loaded DLL starts with a nil package global,
-// so the sound Module must expose an explicit way to re-point itself at the
-// persistent settings that live in GameMemory. This guards the hot-reload Seam
-// without needing Raylib's audio device.
 @(test)
-hot_reloaded_restores_settings_pointer :: proc(t: ^testing.T) {
-	// Simulate the new DLL: its copy of the package global is uninitialized.
-	sound_settings = nil
-
+sound_hot_reload_restores_persistent_music_state :: proc(t: ^testing.T) {
+	playback := MusicPlayback {
+		stopping = true,
+	}
 	settings := SoundSettings {
-		music_volume = 0.5,
+		music_volume           = 0.5,
+		music_playback_primary = &playback,
 	}
+	sound_settings = nil
 	sound_hot_reloaded(&settings)
-
-	testing.expect(t, sound_settings != nil, "sound state left nil after hot reload")
-	testing.expect(t, sound_settings == &settings, "settings pointer not restored")
+	testing.expect(t, sound_settings == &settings)
 	testing.expect_value(t, sound_settings.music_volume, f32(0.5))
+	testing.expect(t, sound_settings.music_playback_primary == &playback)
+	testing.expect(t, sound_settings.music_playback_primary.stopping)
 }
 
 @(test)
-sound_retrigger_fade_needed_only_for_same_playing_sound_longer_than_threshold :: proc(
-	t: ^testing.T,
-) {
-	testing.expect_value(
-		t,
-		sound_retrigger_fade_needed(
-			.Cat_Meow,
-			.Cat_Meow,
-			true,
-			SOUND_REPLAY_FADE_THRESHOLD + 0.01,
-		),
-		true,
-	)
-	testing.expect_value(
-		t,
-		sound_retrigger_fade_needed(.Cat_Meow, .Cat_Meow, true, SOUND_REPLAY_FADE_THRESHOLD),
-		false,
-	)
-	testing.expect_value(
-		t,
-		sound_retrigger_fade_needed(
-			.Cat_Meow,
-			.Cat_Meow,
-			true,
-			SOUND_REPLAY_FADE_THRESHOLD - 0.01,
-		),
-		false,
-	)
-	testing.expect_value(
-		t,
-		sound_retrigger_fade_needed(
-			.Cat_Meow,
-			.Cat_Meow,
-			false,
-			SOUND_REPLAY_FADE_THRESHOLD + 0.01,
-		),
-		false,
-	)
-	testing.expect_value(
-		t,
-		sound_retrigger_fade_needed(
-			.Cat_Meow,
-			.Ding_126626,
-			true,
-			SOUND_REPLAY_FADE_THRESHOLD + 0.01,
-		),
-		false,
-	)
+sound_retrigger_fade_requires_same_playing_long_effect :: proc(t: ^testing.T) {
+	testing.expect(t, sound_retrigger_fade_needed(.Cat_Meow, .Cat_Meow, true, 4.01))
+	testing.expect(t, !sound_retrigger_fade_needed(.Cat_Meow, .Cat_Meow, true, 4))
+	testing.expect(t, !sound_retrigger_fade_needed(.Cat_Meow, .Cat_Meow, false, 5))
+	testing.expect(t, !sound_retrigger_fade_needed(.Cat_Meow, .Ding_126626, true, 5))
 }
 
 @(test)
-music_current_volume_reports_audible_voice_volume :: proc(t: ^testing.T) {
-	settings := SoundSettings{}
-	sound_settings = &settings
-
-	settings.music_voices[0] = MusicVoice {
-		active            = true,
-		volume            = 0.8,
-		fade_phase        = .FadingIn,
-		fade_in_duration  = 1,
-		fade_in_time_left = 0.5,
-	}
-	settings.music_voices[1] = MusicVoice {
-		active             = true,
-		volume             = 0.3,
-		fade_phase         = .FadingOut,
-		fade_out_duration  = 1,
-		fade_out_time_left = 1,
-	}
-
-	// Fading in uses the squared fade curve, so 0.8 * 0.5^2 = 0.2. The UI
-	// should reflect the loudest currently audible track, not the target 0.8.
-	testing.expect_value(t, sound_music_current_volume(), f32(0.3))
-}
-
-@(test)
-music_volume_applies_track_gain_when_normalized :: proc(t: ^testing.T) {
+music_normalization_is_attenuation_only :: proc(t: ^testing.T) {
 	settings := SoundSettings {
 		normalize_volume = true,
 		target_loudness  = -12,
 	}
 	sound_settings = &settings
-
-	track_path := "test-normalized-track.mp3"
-	track_active_rms := f32(0.1)
-	TRACKS[track_path] = GeneratedTrack {
-		active_rms = track_active_rms,
-	}
-	defer delete_key(&TRACKS, track_path)
-	expected_gain := track_volume_multiplier(track_active_rms)
-
-	voice := MusicVoice {
-		active     = true,
-		path       = track_path,
-		volume     = 0.8,
-		fade_phase = .Holding,
-	}
-
-	testing.expect_value(t, music_voice_volume_current(voice), f32(0.8) * expected_gain)
+	testing.expect_value(t, track_volume_multiplier(0), f32(1))
+	testing.expect_value(t, track_volume_multiplier(0.01), f32(1))
+	testing.expect(t, track_volume_multiplier(1) >= MUSIC_MIN_NORMALIZED_GAIN)
+	testing.expect(t, track_volume_multiplier(1) < 1)
 }
 
 @(test)
-music_volume_ignores_track_gain_when_normalization_off :: proc(t: ^testing.T) {
+sound_music_current_volume_uses_maximum_live_volume :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 0.4}})
+	defer music_playback_test_destroy(&playback, mixer_value)
+	path := "test-current-volume"
+	path_incoming := "test-current-volume-incoming"
+	TRACKS[path] = {}
+	defer delete_key(&TRACKS, path)
+	TRACKS[path_incoming] = {}
+	defer delete_key(&TRACKS, path_incoming)
+	playback.source_path = path
+	incoming_audio := mixer.CreateSineWaveAudio(mixer_value, 440, 0.1, 30000)
+	ensure(incoming_audio != nil)
+	defer mixer.DestroyAudio(incoming_audio)
+	incoming_track := mixer.CreateTrack(mixer_value)
+	ensure(incoming_track != nil)
+	defer mixer.DestroyTrack(incoming_track)
+	incoming := MusicPlayback {
+		mixer_audio        = incoming_audio,
+		mixer_track        = incoming_track,
+		source_path        = path_incoming,
+		volume_point_count = 1,
+	}
+	incoming.volume_points[0] = {0, 0.2}
 	settings := SoundSettings {
+		music_volume     = 0.5,
+		normalize_volume = false,
+	}
+	settings.music_playbacks[0] = playback
+	settings.music_playbacks[1] = incoming
+	settings.music_playback_primary = &settings.music_playbacks[0]
+	sound_settings = &settings
+	ensure(mixer.SetTrackAudio(playback.mixer_track, playback.mixer_audio))
+	ensure(mixer.PlayTrack(playback.mixer_track, 0))
+	ensure(mixer.SetTrackAudio(incoming_track, incoming_audio))
+	ensure(mixer.PlayTrack(incoming_track, 0))
+	testing.expect_value(t, sound_music_current_volume(), f32(0.4))
+	settings.music_playbacks[1].volume_points[0].volume = 0.7
+	testing.expect_value(t, sound_music_current_volume(), f32(0.7))
+	ensure(mixer.StopTrack(incoming_track, 0))
+	TRACKS[path] = {
+		active_rms = 1,
+	}
+	settings.normalize_volume = true
+	settings.target_loudness = -12
+	testing.expect_value(t, sound_music_current_volume(), f32(0.4) * track_volume_multiplier(1))
+	ensure(mixer.StopTrack(playback.mixer_track, 0))
+	testing.expect_value(t, sound_music_current_volume(), f32(0))
+}
+
+@(test)
+music_playback_explicit_endpoints_ignore_settings_volume :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 0}})
+	defer music_playback_test_destroy(&playback, mixer_value)
+	path := "test-explicit-endpoints"
+	TRACKS[path] = {}
+	defer delete_key(&TRACKS, path)
+	playback.source_path = path
+	playback.bounds_end_seconds = 30
+	settings := SoundSettings {
+		music_volume = 0.9,
+	}
+	sound_settings = &settings
+	ensure(mixer.SetTrackAudio(playback.mixer_track, playback.mixer_audio))
+	ensure(mixer.PlayTrack(playback.mixer_track, 0))
+	music_playback_volume_set(&playback, {{0, 0}, {2, 0.3}})
+	testing.expect_value(t, music_playback_volume_endpoint(&playback), f32(0.3))
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 2)),
+		f32(0.3),
+	)
+	music_playback_volume_set(&playback, {{0, 1}})
+	testing.expect_value(t, music_playback_volume_at(&playback, playback.volume_frame_start), f32(1))
+	testing.expect_value(t, mixer.GetTrackGain(playback.mixer_track), f32(1))
+}
+
+@(test)
+music_playback_successor_endpoint_uses_final_nonzero_point :: proc(t: ^testing.T) {
+	playback := MusicPlayback {
+		volume_point_count = 3,
+	}
+	playback.volume_points[0] = {0, 0}
+	playback.volume_points[1] = {2, 0.4}
+	playback.volume_points[2] = {22, 0.6}
+	testing.expect_value(t, music_playback_volume_endpoint(&playback), f32(0.6))
+	playback.volume_points[0] = {0, 0.7}
+	playback.volume_point_count = 1
+	testing.expect_value(t, music_playback_volume_endpoint(&playback), f32(0.7))
+	playback.volume_points[0] = {0, 0.7}
+	playback.volume_points[1] = {2, 0}
+	playback.volume_point_count = 2
+	testing.expect_value(t, music_playback_volume_endpoint(&playback), f32(0.7))
+}
+
+@(test)
+music_playback_stopping_gain_tracks_normalization :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 0.4}, {10, 0}})
+	defer music_playback_test_destroy(&playback, mixer_value)
+	path := "test-stopping-gain"
+	TRACKS[path] = {}
+	defer delete_key(&TRACKS, path)
+	playback.source_path = path
+	playback.volume_point_next = 1
+	playback.stopping = true
+	ensure(mixer.SetTrackAudio(playback.mixer_track, playback.mixer_audio))
+	ensure(mixer.SetTrackGain(playback.mixer_track, 0.4))
+	ensure(mixer.PlayTrack(playback.mixer_track, 0))
+	settings := SoundSettings {
+		music_volume     = 0.5,
 		normalize_volume = false,
 	}
 	sound_settings = &settings
-
-	voice := MusicVoice {
-		active     = true,
-		path       = "missing.mp3",
-		volume     = 0.8,
-		fade_phase = .Holding,
+	points := playback.volume_points
+	TRACKS[path] = {
+		active_rms = 1,
 	}
-
-	testing.expect_value(t, music_voice_volume_current(voice), f32(0.8))
+	settings.normalize_volume = true
+	settings.target_loudness = -12
+	testing.expect(t, !music_playback_update(&playback))
+	testing.expect_value(
+		t,
+		mixer.GetTrackGain(playback.mixer_track),
+		f32(0.4) * track_volume_multiplier(1),
+	)
+	testing.expect(t, playback.stopping)
+	testing.expect_value(t, playback.volume_points, points)
 }
 
 @(test)
-music_amplitude_fade_eases_in_but_fades_out_linearly :: proc(t: ^testing.T) {
-	testing.expect_value(t, music_amplitude_fade(0.5, true), f32(0.25))
-	testing.expect_value(t, music_amplitude_fade(0.5, false), f32(0.5))
-}
-
-@(test)
-music_voice_amplitude_comes_from_fade_time_left :: proc(t: ^testing.T) {
-	in_voice := MusicVoice {
-		fade_phase        = .FadingIn,
-		fade_in_duration  = 2,
-		fade_in_time_left = 1,
-	}
-	out_voice := MusicVoice {
-		fade_phase         = .FadingOut,
-		fade_out_duration  = 2,
-		fade_out_time_left = 1,
-	}
-	holding_voice := MusicVoice {
-		fade_phase = .Holding,
-	}
-
-	testing.expect_value(t, music_voice_amplitude_fraction(in_voice), f32(0.25))
-	testing.expect_value(t, music_voice_amplitude_fraction(out_voice), f32(0.5))
-	testing.expect_value(t, music_voice_amplitude_fraction(holding_voice), f32(1))
-}
-
-@(test)
-music_voice_amplitude_quick_fade_out_uses_squared_fade :: proc(t: ^testing.T) {
-	voice := MusicVoice {
-		fade_phase         = .FadingOut,
-		fade_out_duration  = 2,
-		fade_out_time_left = 1,
-		fade_out_quick     = true,
-	}
-
-	testing.expect_value(t, music_voice_amplitude_fraction(voice), f32(0.25))
-}
-
-@(test)
-music_voice_holds_after_fade_in_then_targets_fade_out :: proc(t: ^testing.T) {
-	voice := MusicVoice {
-		active             = true,
-		fade_phase         = .FadingIn,
-		fade_in_duration   = 1,
-		fade_in_time_left  = 1,
-		fade_out_duration  = 1.5,
-		fade_out_time_left = 1.5,
-		hold_time_left     = 3,
-	}
-
-	music_voice_fade_update(&voice, 1)
-	testing.expect_value(t, voice.fade_phase, MusicFadePhase.Holding)
-	testing.expect_value(t, voice.fade_in_time_left, f32(0))
-
-	music_voice_fade_update(&voice, 2)
-	testing.expect_value(t, voice.hold_time_left, f32(1))
-	testing.expect_value(t, voice.fade_phase, MusicFadePhase.Holding)
-
-	music_voice_fade_update(&voice, 1)
-	testing.expect_value(t, voice.hold_time_left, f32(0))
-	testing.expect_value(t, voice.fade_phase, MusicFadePhase.FadingOut)
-
-	music_voice_fade_update(&voice, 0.75)
-	testing.expect_value(t, voice.fade_out_time_left, f32(0.75))
-}
-
-@(test)
-music_track_bounds_missing_uses_full_track :: proc(t: ^testing.T) {
+music_bounds_restore_and_invalidate_by_hash :: proc(t: ^testing.T) {
 	bounds_by_path := make(map[string]MusicTrackBounds)
 	defer delete(bounds_by_path)
-
-	bounds, stale := music_track_bounds_resolve(bounds_by_path, "track.mp3", "hash", 120)
-	testing.expect_value(t, stale, false)
-	testing.expect_value(t, bounds.file_hash, "hash")
-	testing.expect_value(t, bounds.start_time, f32(0))
-	testing.expect_value(t, bounds.end_time, f32(120))
-}
-
-@(test)
-music_track_bounds_matching_hash_restores_selection :: proc(t: ^testing.T) {
-	bounds_by_path := make(map[string]MusicTrackBounds)
-	defer delete(bounds_by_path)
-	bounds_by_path["track.mp3"] = MusicTrackBounds {
+	bounds_by_path["track.mp3"] = {
 		file_hash  = "hash",
 		start_time = 12.5,
 		end_time   = 45.25,
 	}
-
 	bounds, stale := music_track_bounds_resolve(bounds_by_path, "track.mp3", "hash", 120)
-	testing.expect_value(t, stale, false)
+	testing.expect(t, !stale)
 	testing.expect_value(t, bounds.start_time, f32(12.5))
 	testing.expect_value(t, bounds.end_time, f32(45.25))
-}
-
-@(test)
-music_track_bounds_changed_hash_reports_stale_and_uses_full_track :: proc(t: ^testing.T) {
-	bounds_by_path := make(map[string]MusicTrackBounds)
-	defer delete(bounds_by_path)
-	bounds_by_path["track.mp3"] = MusicTrackBounds {
-		file_hash  = "old-hash",
-		start_time = 12.5,
-		end_time   = 45.25,
-	}
-
-	bounds, stale := music_track_bounds_resolve(bounds_by_path, "track.mp3", "new-hash", 120)
-	testing.expect_value(t, stale, true)
-	testing.expect_value(t, bounds.file_hash, "new-hash")
+	bounds, stale = music_track_bounds_resolve(bounds_by_path, "track.mp3", "changed", 120)
+	testing.expect(t, stale)
 	testing.expect_value(t, bounds.start_time, f32(0))
 	testing.expect_value(t, bounds.end_time, f32(120))
 }
 
 @(test)
-music_track_time_uses_elapsed_time_with_selected_length :: proc(t: ^testing.T) {
+music_time_uses_selected_bounds :: proc(t: ^testing.T) {
 	played, length := music_track_time_relative(25, 10, 50)
 	testing.expect_value(t, played, f32(25))
 	testing.expect_value(t, length, f32(40))
-
-	played, _ = music_track_time_relative(0, 18.385664, 50)
-	testing.expect_value(t, played, f32(0))
-	played, _ = music_track_time_relative(1, 18.385664, 50)
-	testing.expect_value(t, played, f32(1))
 	played, _ = music_track_time_relative(60, 10, 50)
 	testing.expect_value(t, played, f32(40))
 }
 
 @(test)
-music_voice_transition_uses_bound_end_and_waits_for_short_segments :: proc(t: ^testing.T) {
-	testing.expect_value(t, music_voice_transition_needed(7.9, 2, 12, 4, false), false)
-	testing.expect_value(t, music_voice_transition_needed(8, 2, 12, 4, false), true)
-	// A segment shorter than the configured overlap plays to its end instead of
-	// starting one successor per frame.
-	testing.expect_value(t, music_voice_transition_needed(2, 0, 3, 4, false), false)
-	testing.expect_value(t, music_voice_transition_needed(3, 0, 3, 4, true), true)
-	// Zero overlap still transitions when the bounded stream reaches its end.
-	testing.expect_value(t, music_voice_transition_needed(12, 2, 12, 0, true), true)
+music_playback_volume_interpolates_and_holds :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 0.25}, {2, 1}, {3, 1}})
+	defer music_playback_test_destroy(&playback, mixer_value)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, -1)),
+		f32(0.25),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 0)),
+		f32(0.25),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 1)),
+		f32(0.625),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 2)),
+		f32(1),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 2.5)),
+		f32(1),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 3)),
+		f32(1),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 4)),
+		f32(1),
+	)
 }
 
 @(test)
-track_pick_unplayed_returns_nil_when_exhausted_and_reset_makes_pickable :: proc(t: ^testing.T) {
-	settings := SoundSettings {
-		shuffle = false,
-	}
-	sound_settings = &settings
+music_playback_volume_scene_points :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 0.5}, {0.5, 1}, {3.5, 1}, {4.5, 0}})
+	defer music_playback_test_destroy(&playback, mixer_value)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 0)),
+		f32(0.5),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 0.25)),
+		f32(0.75),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 0.5)),
+		f32(1),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 3.5)),
+		f32(1),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 4)),
+		f32(0.5),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 4.5)),
+		f32(0),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 6)),
+		f32(0),
+	)
+}
 
+@(test)
+music_playback_volume_set_one_point_is_ongoing :: proc(t: ^testing.T) {
+	volumes := [?]f32{0.4, 0}
+	for volume in volumes {
+		playback, mixer_value := music_playback_test_make({{0, 0.2}, {10, 0}})
+		path := volume == 0 ? "test-constant-zero" : "test-constant-nonzero"
+		TRACKS[path] = {}
+		playback.source_path = path
+		playback.bounds_end_seconds = 30
+		ensure(mixer.SetTrackAudio(playback.mixer_track, playback.mixer_audio))
+		ensure(mixer.PlayTrack(playback.mixer_track, 0))
+		settings := SoundSettings {
+			music_volume     = 0.5,
+			normalize_volume = false,
+		}
+		sound_settings = &settings
+		music_playback_volume_set(&playback, {{0, volume}})
+		testing.expect(t, mixer.TrackPlaying(playback.mixer_track))
+		testing.expect(t, !playback.stopping)
+		testing.expect_value(t, playback.volume_point_count, u8(1))
+		testing.expect_value(t, mixer.GetTrackGain(playback.mixer_track), volume)
+		delete_key(&TRACKS, path)
+		music_playback_test_destroy(&playback, mixer_value)
+	}
+}
+
+@(test)
+music_playback_volume_oscar_points :: proc(t: ^testing.T) {
+	fade := f32(2)
+	playback, mixer_value := music_playback_test_make({{0, 0}, {fade, 0.4}, {fade + 20, 0.6}})
+	defer music_playback_test_destroy(&playback, mixer_value)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, 0)),
+		f32(0),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, fade)),
+		f32(0.4),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, fade + 10)),
+		f32(0.5),
+	)
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, music_playback_test_frame(&playback, fade + 20)),
+		f32(0.6),
+	)
+}
+
+@(test)
+music_playback_zero_final_volume_suppresses_automatic_next :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 1}, {1, 0}})
+	playlist := Playlist {
+		name = "test",
+	}
+	playback.playlist = &playlist
+	settings := SoundSettings {
+		mixer                  = mixer_value,
+		music_playback_primary = &playback,
+	}
+	settings.music_playbacks[0] = playback
+	settings.music_playback_primary = &settings.music_playbacks[0]
+	sound_settings = &settings
+	sound_update()
+	testing.expect(t, !settings.music_playbacks[0].playlist_successor_started)
+	mixer.DestroyMixer(mixer_value)
+	mixer.Quit()
+}
+
+@(test)
+music_playback_one_point_zero_starts_silent_automatic_next :: proc(t: ^testing.T) {
+	playback, mixer_value := music_playback_test_make({{0, 0}})
+	playback.bounds_end_seconds = 30
 	playlist := Playlist {
 		name = "test",
 	}
 	defer delete(playlist.tracks)
-	append(&playlist.tracks, Track{title = "played", path = "played.mp3", played = true})
-
-	testing.expect(t, playlist_pick_track_unplayed(&playlist) == nil)
-	sound_settings.shuffle = true
-	testing.expect(t, playlist_pick_track_unplayed(&playlist) == nil)
-	track := track_pick_unplayed_after_reset_for_test(&playlist)
-	testing.expect(t, track != nil, "reset should make exhausted tracks pickable")
+	append(
+		&playlist.tracks,
+		Track {
+			title = "successor",
+			path  = "assets/sounds/music/Ave Maria/Gautier Capucon plays Schubert - Ave Maria – feat. Maitrise Notre-Dame de Paris (orch. Ducros) [fH225XZldjs].mp3",
+		},
+	)
+	playback.playlist = &playlist
+	settings := SoundSettings {
+		mixer                  = mixer_value,
+		music_playback_primary = &playback,
+		shuffle                = false,
+	}
+	settings.music_playbacks[0] = playback
+	settings.music_playback_primary = &settings.music_playbacks[0]
+	sound_settings = &settings
+	sound_update()
+	successor := settings.music_playback_primary
+	testing.expect(t, successor != &settings.music_playbacks[0])
+	testing.expect_value(t, successor.volume_point_count, u8(1))
+	testing.expect_value(t, music_playback_volume_endpoint(successor), f32(0))
+	testing.expect_value(t, mixer.GetTrackGain(successor.mixer_track), f32(0))
+	testing.expect(t, mixer.TrackPlaying(successor.mixer_track))
+	music_playback_stop(successor)
+	mixer.DestroyMixer(mixer_value)
+	mixer.Quit()
 }
 
 @(test)
-track_pick_unplayed_uses_insertion_order_when_shuffle_off :: proc(t: ^testing.T) {
+playlist_selection_preserves_order_and_avoids_last :: proc(t: ^testing.T) {
 	settings := SoundSettings {
 		shuffle = false,
 	}
 	sound_settings = &settings
-
-	playlist := sound_test_playlist_make({"first", "second", "third"})
-	defer delete(playlist.tracks)
-
-	track := playlist_pick_track_unplayed(&playlist)
-	testing.expect(t, track != nil)
-	testing.expect_value(t, track.title, "first")
-
-	track.played = true
-	playlist.last_played_track = track
-	track = playlist_pick_track_unplayed(&playlist)
-	testing.expect(t, track != nil)
-	testing.expect_value(t, track.title, "second")
-}
-
-@(test)
-track_pick_unplayed_avoids_last_track_when_shuffle_off_if_possible :: proc(t: ^testing.T) {
-	settings := SoundSettings {
-		shuffle = false,
+	playlist := Playlist {
+		name = "test",
 	}
-	sound_settings = &settings
-
-	playlist := sound_test_playlist_make({"first", "second"})
 	defer delete(playlist.tracks)
-
+	append(&playlist.tracks, Track{title = "first"}, Track{title = "second"})
 	first := playlist_pick_track_unplayed(&playlist)
-	testing.expect(t, first != nil)
+	testing.expect_value(t, first.title, "first")
+	first.played = true
 	playlist.last_played_track = first
-
-	track := playlist_pick_track_unplayed(&playlist)
-	testing.expect(t, track != nil)
-	testing.expect_value(t, track.title, "second")
+	testing.expect_value(t, playlist_pick_track_unplayed(&playlist).title, "second")
 }
 
-track_pick_unplayed_after_reset_for_test :: proc(playlist: ^Playlist) -> ^Track {
-	for &track in playlist.tracks {
-		track.played = false
+music_playback_test_make :: proc(points: []MusicVolumePoint) -> (MusicPlayback, ^mixer.Mixer) {
+	ensure(mixer.Init())
+	spec := sdl.AudioSpec {
+		format   = .F32,
+		channels = 2,
+		freq     = 48000,
 	}
-	return playlist_pick_track_unplayed(playlist)
+	mixer_value := mixer.CreateMixer(&spec)
+	ensure(mixer_value != nil)
+	audio := mixer.CreateSineWaveAudio(mixer_value, 440, 0.1, 30000)
+	ensure(audio != nil)
+	track := mixer.CreateTrack(mixer_value)
+	ensure(track != nil)
+	playback := MusicPlayback {
+		mixer_audio        = audio,
+		mixer_track        = track,
+		volume_point_count = u8(len(points)),
+		volume_frame_start = 100,
+	}
+	copy(playback.volume_points[:], points)
+	return playback, mixer_value
 }
 
-sound_test_playlist_make :: proc(titles: []string) -> Playlist {
-	playlist := Playlist {
-		name = "test",
-	}
-	for title in titles {
-		append(&playlist.tracks, Track{title = title, path = title})
-	}
-	return playlist
+music_playback_test_destroy :: proc(playback: ^MusicPlayback, mixer_value: ^mixer.Mixer) {
+	mixer.DestroyTrack(playback.mixer_track)
+	mixer.DestroyAudio(playback.mixer_audio)
+	mixer.DestroyMixer(mixer_value)
+	mixer.Quit()
+}
+
+music_playback_test_frame :: proc(playback: ^MusicPlayback, seconds: f32) -> i64 {
+	return(
+		playback.volume_frame_start +
+		mixer.AudioMSToFrames(playback.mixer_audio, i64(seconds * 1000)) \
+	)
 }

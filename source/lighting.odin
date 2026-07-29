@@ -5,7 +5,6 @@ import "core:log"
 import "core:math"
 import "core:strings"
 import "osc"
-import rl "vendor:raylib"
 
 LightingLook :: enum {
 	House,
@@ -88,10 +87,9 @@ lighting_update :: proc() {
 	socket, socket_ok := gm.lighting.socket.?
 	ensure(socket_ok)
 
-	frame_time := rl.GetFrameTime()
 	for &fx, kind in gm.lighting.fx {
 		if fx.key_count == 0 do continue
-		fx.elapsed += frame_time
+		fx.elapsed += dt
 		last_key := fx.keys[fx.key_count - 1]
 		weight := last_key.weight
 		if fx.elapsed < last_key.at_seconds {
