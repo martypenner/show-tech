@@ -83,8 +83,6 @@ main :: proc() {
 	defer delete(playlists)
 	sound_effects := load_sound_effects()
 	defer delete(sound_effects)
-	control_names := load_control_names()
-	defer delete(control_names)
 	tracks: [dynamic]GeneratedTrack
 	defer delete(tracks)
 
@@ -215,13 +213,6 @@ main :: proc() {
 	}
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, "ControlName :: enum {")
-	fmt.sbprintln(&builder, "\tUnknown,")
-	for control_name in control_names {
-		fmt.sbprintf(&builder, "\t%s,\n", control_name.ident)
-	}
-	fmt.sbprintln(&builder, "}")
-	fmt.sbprintln(&builder)
 	fmt.sbprintf(&builder, "TRACK_WAVEFORM_SAMPLE_COUNT :: %d\n", TRACK_WAVEFORM_SAMPLE_COUNT)
 	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder, "GeneratedTrack :: struct {")
@@ -274,15 +265,6 @@ main :: proc() {
 	fmt.sbprintln(&builder, "\tcase: return \"\"")
 	fmt.sbprintln(&builder, "\t}")
 	fmt.sbprintln(&builder, "}")
-	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, "control_name_from_string :: proc(name: string) -> ControlName {")
-	fmt.sbprintln(&builder, "\tswitch name {")
-	for control_name in control_names {
-		fmt.sbprintf(&builder, "\tcase %q: return .%s\n", control_name.name, control_name.ident)
-	}
-	fmt.sbprintln(&builder, "\tcase: return .Unknown")
-	fmt.sbprintln(&builder, "\t}")
-	fmt.sbprintln(&builder, "}")
 
 	write_err := os.write_entire_file(OUT_FILE, strings.to_string(builder))
 	if write_err != nil {
@@ -325,72 +307,6 @@ load_sound_effects :: proc() -> [dynamic]SoundEffect {
 		return strings.compare(a.path, b.path) < 0
 	})
 	return sound_effects
-}
-
-load_control_names :: proc() -> [dynamic]ControlNameEntry {
-	entries, err := os.read_all_directory_by_path(LAYOUT_DIR, context.temp_allocator)
-	if err != nil {
-		fmt.eprintf("Error reading %s: %v\n", LAYOUT_DIR, err)
-		os.exit(1)
-	}
-
-	control_names: [dynamic]ControlNameEntry
-	for entry in entries {
-		if entry.type != .Regular && entry.type != .Symlink do continue
-		if !strings.has_suffix(entry.name, ".rgl") do continue
-
-		contents, read_err := os.read_entire_file(entry.fullpath, context.temp_allocator)
-		if read_err != nil {
-			fmt.eprintf("Error reading layout %s: %v\n", entry.fullpath, read_err)
-			os.exit(1)
-		}
-
-		remaining := string(contents)
-		line_no := 0
-		for line in strings.split_lines_iterator(&remaining) {
-			line_no += 1
-			if len(line) == 0 || line[0] != 'c' do continue
-
-			parts := strings.split_n(line, " ", 5, context.temp_allocator)
-			if len(parts) < 4 {
-				fmt.eprintf("Malformed control line %s:%d: %s\n", entry.fullpath, line_no, line)
-				os.exit(1)
-			}
-
-			name := parts[3]
-			ident := playlist_ident(name, context.allocator)
-			if len(ident) == 0 do continue
-
-			for control_name in control_names {
-				if control_name.name == name {
-					fmt.eprintf(
-						"Duplicate control name %q in %s:%d\n",
-						name,
-						entry.fullpath,
-						line_no,
-					)
-					os.exit(1)
-				}
-				if control_name.ident == ident {
-					fmt.eprintf(
-						"Duplicate control identifier %q from %q in %s:%d\n",
-						ident,
-						name,
-						entry.fullpath,
-						line_no,
-					)
-					os.exit(1)
-				}
-			}
-
-			append(&control_names, ControlNameEntry{ident = ident, name = strings.clone(name)})
-		}
-	}
-
-	slice.sort_by(control_names[:], proc(a, b: ControlNameEntry) -> bool {
-		return strings.compare(a.name, b.name) < 0
-	})
-	return control_names
 }
 
 track_cache_entry_resolve :: proc(
