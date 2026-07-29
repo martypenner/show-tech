@@ -135,7 +135,7 @@ controls_draw :: proc() {
 			}
 
 			if imgui.Button("Pre-show") {
-				playlist := playlist_find_by_name(.Happy_Beats)
+				playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Explore)
 				ensure(playlist != nil, "Couldn't find playlist for Pre_Show")
 
 				track := playlist_pick_random_track(playlist)
@@ -164,7 +164,7 @@ controls_draw :: proc() {
 			}
 
 			if imgui.Button("Post-show") {
-				playlist := playlist_find_by_name(.Happy_Beats)
+				playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Explore)
 				ensure(playlist != nil, "Couldn't find playlist for Post_Show")
 
 				track := playlist_pick_random_track(playlist)
@@ -338,7 +338,7 @@ controls_draw :: proc() {
 			}
 
 			if imgui.Button("Oscar Moment") {
-				playlist := playlist_find_by_name(.Oscar_Moment)
+				playlist := playlist_find_by_name(.Mood_Heroic_EPIC)
 				ensure(playlist != nil, "Couldn't find playlist for Oscar_Moment")
 
 				current_playback := gm.sound_settings.music_playback_primary
