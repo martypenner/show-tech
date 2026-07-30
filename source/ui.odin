@@ -534,7 +534,7 @@ controls_draw :: proc() {
 
 			controls_group_begin("Lighting")
 
-			if controls_button("House", .Lighting, button_width) {
+			if controls_button("House##Lighting", .Lighting, button_width) {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.House)
 			}
@@ -547,6 +547,11 @@ controls_draw :: proc() {
 			if controls_button("Scene - fade##Lighting", .Lighting, button_width) {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
+			}
+			imgui.SameLine()
+			if controls_button("Fade to black##Lighting", .Lighting, button_width) {
+				lighting_fx_deactivate_all()
+				lighting_fx_run(.Blackout, {{0, gm.lighting.fx[.Blackout].weight_current}, {2, 1}})
 			}
 			imgui.SameLine()
 			if controls_button("Rainbow sting", .Lighting, button_width) {
