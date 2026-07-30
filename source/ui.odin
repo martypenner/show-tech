@@ -49,7 +49,7 @@ controls_button :: proc(label: cstring, kind: UI_Type, width: f32) -> bool {
 }
 
 controls_group_begin :: proc(label: cstring) {
-	imgui.BeginChild(label, {0, 0}, {.AutoResizeY, .Borders})
+	imgui.BeginChild(label, child_flags = {.AutoResizeY, .Borders})
 	imgui.TextUnformatted(label)
 }
 

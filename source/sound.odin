@@ -455,19 +455,13 @@ music_playback_volume_set :: proc(playback: ^MusicPlayback, points: []MusicVolum
 	generated_track, ok := TRACKS[playback.source_path]
 	log.ensuref(ok, "Missing generated track metadata for %s", playback.source_path)
 	gain_multiplier := track_volume_multiplier(generated_track.active_rms)
+
 	first := points[0]
 	if len(points) == 1 {
 		ensure(mixer.SetTrackGain(playback.mixer_track, first.volume * gain_multiplier))
-		props := sound_play_options(
-			frame,
-			mixer.AudioMSToFrames(playback.mixer_audio, i64(playback.bounds_end_seconds * 1000)),
-			0,
-			1,
-		)
-		defer sdl.DestroyProperties(props)
-		ensure(mixer.PlayTrack(playback.mixer_track, props))
 		return
 	}
+
 	second := points[1]
 	if second.volume > first.volume {
 		destination_gain := second.volume * gain_multiplier
@@ -601,7 +595,8 @@ sound_music_current_volume :: proc() -> f32 {
 			music_playback_volume_at(
 				&playback,
 				mixer.GetTrackPlaybackPosition(playback.mixer_track),
-			) * track_volume_multiplier(generated_track.active_rms),
+			) *
+			track_volume_multiplier(generated_track.active_rms),
 		)
 	}
 	return volume_current
@@ -932,7 +927,7 @@ sound_update :: proc() {
 	   !primary.playlist_successor_started &&
 	   !primary.stopping &&
 	   (primary.volume_point_count == 1 ||
-	primary.volume_points[primary.volume_point_count - 1].volume != 0) {
+			   primary.volume_points[primary.volume_point_count - 1].volume != 0) {
 		primary_ended := false
 		for &playback, playback_index in sound_settings.music_playbacks {
 			if &playback == primary {
