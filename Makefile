@@ -33,4 +33,5 @@ format:
 	@odinfmt -w source >/dev/null
 
 clean:
+	@-kill $$(cat $(PIDFILE) 2>/dev/null) 2>/dev/null; rm -f $(PIDFILE)
 	@rm -rf build
