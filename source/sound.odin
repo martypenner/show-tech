@@ -772,11 +772,14 @@ playlist_find_by_name :: proc(playlist_name: PlaylistName) -> ^Playlist {
 
 playlist_pick_random_track :: proc(playlist: ^Playlist) -> ^Track {
 	track := playlist_pick_track_unplayed(playlist)
-	if track != nil || !sound_settings.loop do return track
+	if track != nil do return track
 
+	// Playlist exhausted: clear played flags so it can be replayed next time.
 	for &current_track in playlist.tracks {
 		current_track.played = false
 	}
+	sound_settings.settings_save_time_left = SOUND_SETTINGS_SAVE_DEBOUNCE_DURATION
+	if !sound_settings.loop do return nil
 	return playlist_pick_track_unplayed(playlist)
 }
 
