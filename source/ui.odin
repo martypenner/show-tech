@@ -105,7 +105,7 @@ controls_draw :: proc() {
 		music_tab_selected := false
 		if imgui.BeginTabItem("Controls") {
 			xs := strings.clone_to_cstring(
-				strings.repeat("X", 15, context.temp_allocator),
+				strings.repeat("X", 14, context.temp_allocator),
 				context.temp_allocator,
 			)
 			button_width := imgui.CalcTextSize(xs).x + imgui.GetStyle().FramePadding.x * 2
@@ -544,7 +544,7 @@ controls_draw :: proc() {
 				lighting_look_activate(.Scene)
 			}
 			imgui.SameLine()
-			if controls_button("Scene with fade", .Lighting, button_width) {
+			if controls_button("Scene - fade##Lighting", .Lighting, button_width) {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
 			}
@@ -589,11 +589,10 @@ controls_draw :: proc() {
 
 		if imgui.BeginTabItem("Music") {
 			music_tab_selected = true
-			playlist := music_browser_playlist_selected()
-			if imgui.BeginCombo(
-				"Playlist",
-				strings.clone_to_cstring(playlist.name, context.temp_allocator),
-			) {
+
+			imgui.BeginGroup()
+			imgui.Text("Playlist")
+			if imgui.BeginChild("Playlist##List", {300, 0}, {.FrameStyle}) {
 				for &candidate, index in sound_settings.playlists {
 					if imgui.Selectable(
 						strings.clone_to_cstring(candidate.name, context.temp_allocator),
@@ -605,13 +604,25 @@ controls_draw :: proc() {
 						wave_editor_track_select(&candidate.tracks[0])
 					}
 				}
-				imgui.EndCombo()
 			}
+			imgui.EndChild()
+			imgui.EndGroup()
 
-			track := music_browser_track_selected()
-			if imgui.BeginCombo(
-				"Track",
-				strings.clone_to_cstring(track.title, context.temp_allocator),
+			imgui.SameLine()
+
+			imgui.BeginGroup()
+			imgui.Text("Track")
+			playlist := music_browser_playlist_selected()
+			if imgui.BeginChild(
+				"Track##List",
+				{
+					0,
+					-(WAVEFORM_HEIGHT +
+						imgui.GetFrameHeightWithSpacing() +
+						WAVEFORM_HANDLE_RADIUS +
+						imgui.GetStyle().ItemSpacing.y),
+				},
+				child_flags = {.FrameStyle},
 			) {
 				for &candidate, index in playlist.tracks {
 					if imgui.Selectable(
@@ -622,8 +633,8 @@ controls_draw :: proc() {
 						wave_editor_track_select(&candidate)
 					}
 				}
-				imgui.EndCombo()
 			}
+			imgui.EndChild()
 
 			if wave_editor_preview_is_playing() {
 				if imgui.Button("Stop preview") do wave_editor_preview_stop()
@@ -631,6 +642,8 @@ controls_draw :: proc() {
 				wave_editor_preview_start(music_browser_track_selected())
 			}
 			wave_editor()
+
+			imgui.EndGroup()
 
 			imgui.EndTabItem()
 		}
