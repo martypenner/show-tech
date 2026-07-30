@@ -38,6 +38,21 @@ button_styles := [UI_Type]Button_Style {
 	.Innuendo         = {{0.40, 0.16, 0.40, 1}, {0.60, 0.22, 0.60, 1}, {0.75, 0.30, 0.75, 1}}, // pink
 }
 
+lighting_look_labels := [LightingLook]cstring {
+	.House             = "House",
+	.Scene             = "Scene",
+	.SceneWithFullFade = "Scene - fade",
+	.CenterFocus       = "Center focus",
+}
+
+lighting_fx_labels := [LightingFxKind]cstring {
+	.Blackout     = "Blackout",
+	.RainbowSting = "Rainbow sting",
+	.Rain         = "Rain",
+	.Innuendo     = "Innuendo",
+	.AveMaria     = "Ave Maria",
+}
+
 controls_button :: proc(label: cstring, kind: UI_Type, width: f32) -> bool {
 	style := button_styles[kind]
 	colored := kind != .SoundAndLighting
@@ -604,7 +619,7 @@ controls_draw :: proc() {
 						if imgui.Selectable(
 							strings.clone_to_cstring(playlist.name, context.temp_allocator),
 							sound_settings.music_playback_primary != nil &&
-									sound_settings.music_playback_primary.playlist == &playlist,
+							sound_settings.music_playback_primary.playlist == &playlist,
 						) {
 							ensure(len(playlist.tracks) > 0)
 							sound_settings.music_browser_playlist_index = i32(index)
@@ -724,6 +739,25 @@ controls_draw :: proc() {
 		) {
 			imgui.AlignTextToFramePadding()
 			imgui.Text(strings.clone_to_cstring(music_current_label(), context.temp_allocator))
+
+			imgui.SameLine()
+			imgui.Text("| Lighting: %s", lighting_look_labels[gm.lighting.active_look])
+
+			lighting_fx_count := 0
+			for &fx, kind in gm.lighting.fx {
+				if fx.weight_current <= 0 do continue
+
+				imgui.SameLine(0, 0)
+				if lighting_fx_count == 0 {
+					imgui.TextUnformatted(" | FX: ")
+				} else {
+					imgui.TextUnformatted(", ")
+				}
+
+				imgui.SameLine(0, 0)
+				imgui.Text("%s %.0f%%", lighting_fx_labels[kind], f64(fx.weight_current * 100))
+				lighting_fx_count += 1
+			}
 
 			progress_bar_width: f32 = 150
 			imgui.SameLine(imgui.GetContentRegionAvail().x - progress_bar_width)

@@ -115,7 +115,11 @@ music_playback_explicit_endpoints_ignore_settings_volume :: proc(t: ^testing.T) 
 		f32(0.3),
 	)
 	music_playback_volume_set(&playback, {{0, 1}})
-	testing.expect_value(t, music_playback_volume_at(&playback, playback.volume_frame_start), f32(1))
+	testing.expect_value(
+		t,
+		music_playback_volume_at(&playback, playback.volume_frame_start),
+		f32(1),
+	)
 	testing.expect_value(t, mixer.GetTrackGain(playback.mixer_track), f32(1))
 }
 
@@ -366,7 +370,7 @@ music_playback_one_point_zero_starts_silent_automatic_next :: proc(t: ^testing.T
 		&playlist.tracks,
 		Track {
 			title = "successor",
-			path  = "assets/sounds/music/Ave Maria/Gautier Capucon plays Schubert - Ave Maria – feat. Maitrise Notre-Dame de Paris (orch. Ducros) [fH225XZldjs].mp3",
+			path = "assets/sounds/music/Ave Maria/Gautier Capucon plays Schubert - Ave Maria – feat. Maitrise Notre-Dame de Paris (orch. Ducros) [fH225XZldjs].mp3",
 		},
 	)
 	playback.playlist = &playlist
