@@ -3,6 +3,7 @@ package game
 import imgui "../vendor/odin-imgui"
 import "core:fmt"
 import "core:log"
+import "core:math/rand"
 import "core:strings"
 import mixer "vendor:sdl3/mixer"
 
@@ -52,6 +53,8 @@ lighting_fx_labels := [LightingFxKind]cstring {
 	.Innuendo     = "Innuendo",
 	.AveMaria     = "Ave Maria",
 }
+
+sounds_like_a_song_playlist_retained: ^Playlist
 
 controls_button :: proc(label: cstring, kind: UI_Type, width: f32) -> bool {
 	style := button_styles[kind]
@@ -490,53 +493,70 @@ controls_draw :: proc() {
 				}
 				imgui.SameLine()
 
-				buttons := []cstring{"SlasSlowJam", "SlasClub", "SlasUpbeat", "Slas50sPop"}
-				for action in buttons {
-					if controls_button(action, .Game, button_width) {
-						playlist := playlist_find_by_name(.Sounds_Like_a_Song)
-						ensure(playlist != nil, "Couldn't find playlist for Sounds_Like_a_Song")
+				if controls_button("Sounds Like\n  a Song", .Game, button_width) {
+					current_playback := gm.sound_settings.music_playback_primary
+					playlist_playing :=
+						sounds_like_a_song_playlist_retained != nil &&
+						current_playback != nil &&
+						current_playback.mixer_track != nil &&
+						current_playback.playlist == sounds_like_a_song_playlist_retained &&
+						!current_playback.stopping
 
-						if track_is_current(action) {
-							for &playback in gm.sound_settings.music_playbacks {
-								if playback.mixer_track == nil do continue
-								audible := music_playback_volume_at(
-									&playback,
-									mixer.GetTrackPlaybackPosition(playback.mixer_track),
-								)
-								music_playback_volume_set(&playback, {{0, audible}, {2, 0}})
-							}
-
-							lighting_look_activate(.Scene)
-						} else {
-							track := playlist_pick_specific_track(playlist, action)
-							log.ensuref(
-								track != nil,
-								"Couldn't pick track for Sounds_Like_a_Song: %v",
-								action,
+					if playlist_playing {
+						for &playback in gm.sound_settings.music_playbacks {
+							if playback.mixer_track == nil do continue
+							audible := music_playback_volume_at(
+								&playback,
+								mixer.GetTrackPlaybackPosition(playback.mixer_track),
 							)
-
-							new_playback := music_playback_start_playlist_track(
-								playlist,
-								track,
-								0.6,
-								gm.sound_settings.fade_in_time,
+							music_playback_volume_set(
+								&playback,
+								{{0, audible}, {gm.sound_settings.fade_out_time, 0}},
 							)
-							for &playback in gm.sound_settings.music_playbacks {
-								if playback.mixer_track == nil || &playback == new_playback do continue
-								audible := music_playback_volume_at(
-									&playback,
-									mixer.GetTrackPlaybackPosition(playback.mixer_track),
-								)
-								music_playback_volume_set(
-									&playback,
-									{{0, audible}, {gm.sound_settings.fade_out_time, 0}},
-								)
-							}
-
-							lighting_look_activate(.CenterFocus)
 						}
+						sounds_like_a_song_playlist_retained = nil
+
+						lighting_look_activate(.Scene)
+					} else {
+						playlist: ^Playlist
+						playlists_seen := 0
+						for &candidate in sound_settings.playlists {
+							if len(candidate.tracks) == 0 do continue
+							playlists_seen += 1
+							if rand.int_max(playlists_seen) == 0 do playlist = &candidate
+						}
+						ensure(playlist != nil, "Couldn't pick playlist for Sounds_Like_a_Song")
+
+						for &playback in gm.sound_settings.music_playbacks {
+							if playback.mixer_track == nil do continue
+							audible := music_playback_volume_at(
+								&playback,
+								mixer.GetTrackPlaybackPosition(playback.mixer_track),
+							)
+							music_playback_volume_set(
+								&playback,
+								{{0, audible}, {gm.sound_settings.fade_out_time, 0}},
+							)
+						}
+
+						track := playlist_pick_random_track(playlist)
+						ensure(track != nil, "Couldn't pick track for Sounds_Like_a_Song")
+
+						new_playback := music_playback_start_playlist_track(
+							playlist,
+							track,
+							0.6,
+							gm.sound_settings.fade_in_time,
+						)
+						ensure(new_playback != nil, "Couldn't start Sounds_Like_a_Song playback")
+						music_playback_volume_set(
+							new_playback,
+							{{0, 0}, {gm.sound_settings.fade_in_time, 0.5}},
+						)
+						sounds_like_a_song_playlist_retained = playlist
+
+						lighting_look_activate(.CenterFocus)
 					}
-					imgui.SameLine()
 				}
 
 				controls_group_end()
