@@ -4,10 +4,10 @@ PIDFILE=build/hot_reload/game.pid
 
 all: build
 
-build: clean generate-enums
+build: clean
 	./scripts/build_release.sh
 
-build-web: generate-enums
+build-web:
 	./scripts/build_web.sh
 
 generate-enums:
