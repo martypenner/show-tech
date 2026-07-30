@@ -378,7 +378,7 @@ controls_draw :: proc() {
 					// then come partway back up over 4s.
 					lighting_fx_run(
 						.Blackout,
-						{{0, fx.weight_current}, {2, 1}, {21, 1}, {25, 0.7}},
+						{{0, fx.weight_current}, {1, 1}, {17, 1}, {21, 0.7}},
 					)
 					lighting_look_activate(.Scene)
 				}
