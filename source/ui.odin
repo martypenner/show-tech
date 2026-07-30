@@ -23,6 +23,40 @@ Tab :: enum u8 {
 	All,
 }
 
+Button_Style :: struct {
+	base, hovered, active: imgui.Vec4,
+}
+
+button_styles := [UI_Type]Button_Style {
+	.SoundAndLighting = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, // default: no push
+	.Destructive      = {{0.40, 0.08, 0.08, 1}, {0.60, 0.15, 0.15, 1}, {0.75, 0.20, 0.20, 1}}, // red
+	.Sound            = {{0.08, 0.30, 0.10, 1}, {0.15, 0.45, 0.15, 1}, {0.20, 0.55, 0.20, 1}}, // green
+	.Lighting         = {{0.38, 0.32, 0.06, 1}, {0.55, 0.48, 0.08, 1}, {0.70, 0.60, 0.10, 1}}, // yellow
+	.Game             = {{0.08, 0.16, 0.40, 1}, {0.15, 0.24, 0.60, 1}, {0.20, 0.30, 0.75, 1}}, // blue
+	.Innuendo         = {{0.40, 0.16, 0.40, 1}, {0.60, 0.22, 0.60, 1}, {0.75, 0.30, 0.75, 1}}, // pink
+}
+
+controls_button :: proc(label: cstring, kind: UI_Type, width: f32) -> bool {
+	style := button_styles[kind]
+	colored := kind != .SoundAndLighting
+	height := imgui.GetFrameHeight() * 2
+	if colored do imgui.PushStyleColorImVec4(.Button, style.base)
+	if colored do imgui.PushStyleColorImVec4(.ButtonHovered, style.hovered)
+	if colored do imgui.PushStyleColorImVec4(.ButtonActive, style.active)
+	clicked := imgui.Button(label, {width, height})
+	if colored do imgui.PopStyleColor(3)
+	return clicked
+}
+
+controls_group_begin :: proc(label: cstring) {
+	imgui.BeginChild(label, {0, 0}, {.AutoResizeY, .Borders})
+	imgui.TextUnformatted(label)
+}
+
+controls_group_end :: proc() {
+	imgui.EndChild()
+}
+
 music_browser_playlist_selected :: proc() -> ^Playlist {
 	ensure(
 		sound_settings.music_browser_playlist_index >= 0 &&
@@ -70,6 +104,12 @@ controls_draw :: proc() {
 	if imgui.BeginTabBar("TopTabs", {}) {
 		music_tab_selected := false
 		if imgui.BeginTabItem("Controls") {
+			xs := strings.clone_to_cstring(
+				strings.repeat("X", 15, context.temp_allocator),
+				context.temp_allocator,
+			)
+			button_width := imgui.CalcTextSize(xs).x + imgui.GetStyle().FramePadding.x * 2
+
 			if imgui.Checkbox("Use house music", &gm.sound_settings.use_house_music) {
 				if gm.sound_settings.use_house_music {
 					if gm.sound_settings.current_playing_playlist == nil {
@@ -116,7 +156,6 @@ controls_draw :: proc() {
 			}
 			imgui.SameLine(spacing = 40)
 
-			imgui.SetNextItemWidth(200)
 			music_vol := sound_music_current_volume() * 100
 			if imgui.SliderFloat(
 				"Volume",
@@ -134,7 +173,9 @@ controls_draw :: proc() {
 				sound_settings_save()
 			}
 
-			if imgui.Button("Pre-show") {
+			controls_group_begin("Show")
+
+			if controls_button("Pre-show", .SoundAndLighting, button_width) {
 				playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Explore)
 				ensure(playlist != nil, "Couldn't find playlist for Pre_Show")
 
@@ -162,8 +203,9 @@ controls_draw :: proc() {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.House)
 			}
+			imgui.SameLine()
 
-			if imgui.Button("Post-show") {
+			if controls_button("Post-show", .SoundAndLighting, button_width) {
 				playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Explore)
 				ensure(playlist != nil, "Couldn't find playlist for Post_Show")
 
@@ -192,7 +234,7 @@ controls_draw :: proc() {
 				lighting_look_activate(.House)
 			}
 
-			if imgui.Button("To house") {
+			if controls_button("To house", .SoundAndLighting, button_width) {
 				if gm.sound_settings.use_house_music {
 					playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Chill)
 					ensure(playlist != nil, "Couldn't find playlist for To_House")
@@ -234,8 +276,9 @@ controls_draw :: proc() {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.House)
 			}
+			imgui.SameLine()
 
-			if imgui.Button("Scene - ramp") {
+			if controls_button("Scene - ramp", .SoundAndLighting, button_width) {
 				primary := gm.sound_settings.music_playback_primary
 				if primary != nil &&
 				   primary.mixer_track != nil &&
@@ -261,8 +304,9 @@ controls_draw :: proc() {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
 			}
+			imgui.SameLine()
 
-			if imgui.Button("Scene - fade") {
+			if controls_button("Scene - fade", .SoundAndLighting, button_width) {
 				for &playback in gm.sound_settings.music_playbacks {
 					if playback.mixer_track == nil do continue
 					audible := music_playback_volume_at(
@@ -275,8 +319,9 @@ controls_draw :: proc() {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
 			}
+			imgui.SameLine()
 
-			if imgui.Button("Drop needle") {
+			if controls_button("Drop needle", .Destructive, button_width) {
 				playlist := playlist_find_by_name(.Needle_Droppers)
 				ensure(playlist != nil, "Couldn't find playlist for Needle_Droppers")
 
@@ -292,9 +337,58 @@ controls_draw :: proc() {
 				lighting_fx_run(.Blackout, {{0, 1}})
 			}
 
-			// Games
+			if controls_button("Ave Maria", .SoundAndLighting, button_width) {
+				playlist := playlist_find_by_name(.Ave_Maria)
+				ensure(playlist != nil)
 
-			if imgui.Button("Innuendo") {
+				if playlist_is_current(.Ave_Maria) {
+					for &playback in gm.sound_settings.music_playbacks {
+						music_playback_stop(&playback)
+					}
+				} else {
+					track := playlist_pick_random_track(playlist)
+					ensure(track != nil, "Couldn't pick track for AveMaria")
+
+					new_playback := music_playback_start_playlist_track(
+						playlist,
+						track,
+						1,
+						gm.sound_settings.fade_in_time,
+					)
+					for &playback in gm.sound_settings.music_playbacks {
+						if playback.mixer_track == nil || &playback == new_playback do continue
+						audible := music_playback_volume_at(
+							&playback,
+							mixer.GetTrackPlaybackPosition(playback.mixer_track),
+						)
+						music_playback_volume_set(
+							&playback,
+							{{0, audible}, {gm.sound_settings.fade_out_time, 0}},
+						)
+					}
+				}
+
+				fx := gm.lighting.fx[.Blackout]
+				if fx.weight_current > 0 {
+					// Blackout is dark: fade it down.
+					lighting_fx_run(.Blackout, {{0, fx.weight_current}, {2, 0}})
+					lighting_look_activate(.Scene)
+				} else {
+					// Full blackout right away, hold while the intro plays,
+					// then come partway back up over 4s.
+					lighting_fx_run(
+						.Blackout,
+						{{0, fx.weight_current}, {2, 1}, {21, 1}, {25, 0.7}},
+					)
+					lighting_look_activate(.Scene)
+				}
+			}
+
+			controls_group_end()
+
+			controls_group_begin("Games")
+
+			if controls_button("Innuendo", .Innuendo, button_width) {
 				playlist := playlist_find_by_name(.Sex_With_Me)
 				ensure(playlist != nil, "Couldn't find playlist for Innuendo")
 
@@ -336,8 +430,9 @@ controls_draw :: proc() {
 				target_prev := fx.key_count > 0 ? fx.keys[fx.key_count - 1].weight : 0
 				lighting_fx_run(.Innuendo, {{0, fx.weight_current}, {2, 1 - target_prev}})
 			}
+			imgui.SameLine()
 
-			if imgui.Button("Oscar Moment") {
+			if controls_button("Oscar Moment", .Game, button_width) {
 				playlist := playlist_find_by_name(.Mood_Heroic_EPIC)
 				ensure(playlist != nil, "Couldn't find playlist for Oscar_Moment")
 
@@ -385,10 +480,11 @@ controls_draw :: proc() {
 					lighting_look_activate(.CenterFocus)
 				}
 			}
+			imgui.SameLine()
 
 			buttons := []cstring{"SlasSlowJam", "SlasClub", "SlasUpbeat", "Slas50sPop"}
 			for action in buttons {
-				if imgui.Button(action) {
+				if controls_button(action, .Game, button_width) {
 					playlist := playlist_find_by_name(.Sounds_Like_a_Song)
 					ensure(playlist != nil, "Couldn't find playlist for Sounds_Like_a_Song")
 
@@ -432,70 +528,28 @@ controls_draw :: proc() {
 						lighting_look_activate(.CenterFocus)
 					}
 				}
+				imgui.SameLine()
 			}
+			controls_group_end()
 
-			if imgui.Button("Ave Maria") {
-				playlist := playlist_find_by_name(.Ave_Maria)
-				ensure(playlist != nil)
+			controls_group_begin("Lighting")
 
-				if playlist_is_current(.Ave_Maria) {
-					for &playback in gm.sound_settings.music_playbacks {
-						music_playback_stop(&playback)
-					}
-				} else {
-					track := playlist_pick_random_track(playlist)
-					ensure(track != nil, "Couldn't pick track for AveMaria")
-
-					new_playback := music_playback_start_playlist_track(
-						playlist,
-						track,
-						1,
-						gm.sound_settings.fade_in_time,
-					)
-					for &playback in gm.sound_settings.music_playbacks {
-						if playback.mixer_track == nil || &playback == new_playback do continue
-						audible := music_playback_volume_at(
-							&playback,
-							mixer.GetTrackPlaybackPosition(playback.mixer_track),
-						)
-						music_playback_volume_set(
-							&playback,
-							{{0, audible}, {gm.sound_settings.fade_out_time, 0}},
-						)
-					}
-				}
-
-				fx := gm.lighting.fx[.Blackout]
-				if fx.weight_current > 0 {
-					// Blackout is dark: fade it down.
-					lighting_fx_run(.Blackout, {{0, fx.weight_current}, {2, 0}})
-					lighting_look_activate(.Scene)
-				} else {
-					// Full blackout right away, hold while the intro plays,
-					// then come partway back up over 4s.
-					lighting_fx_run(
-						.Blackout,
-						{{0, fx.weight_current}, {2, 1}, {21, 1}, {25, 0.7}},
-					)
-					lighting_look_activate(.Scene)
-				}
-			}
-
-			// Lighting
-
-			if imgui.Button("House") {
+			if controls_button("House", .Lighting, button_width) {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.House)
 			}
-			if imgui.Button("Scene") {
+			imgui.SameLine()
+			if controls_button("Scene", .Lighting, button_width) {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.Scene)
 			}
-			if imgui.Button("Scene with fade") {
+			imgui.SameLine()
+			if controls_button("Scene with fade", .Lighting, button_width) {
 				lighting_fx_deactivate_all()
 				lighting_look_activate(.SceneWithFullFade)
 			}
-			if imgui.Button("Rainbow sting") {
+			imgui.SameLine()
+			if controls_button("Rainbow sting", .Lighting, button_width) {
 				// Toggle: head for the opposite of wherever the last envelope
 				// was going, starting from the current weight.
 				fx := gm.lighting.fx[.RainbowSting]
@@ -503,19 +557,32 @@ controls_draw :: proc() {
 				lighting_fx_run(.RainbowSting, {{0, fx.weight_current}, {2, 1 - target_prev}})
 			}
 
-			// Sounds
+			controls_group_end()
 
-			if imgui.Button("Break glass") do sound_play(.Glass_Breaking_Sound_Effect_HD_Glass_Shattering_Sound_Effect_TcnufvBffcY, 0.8)
-			if imgui.Button("Gunshot") do sound_play(.Single_Gunshot_54_40780, 0.8)
-			if imgui.Button("Scream, lady!") do sound_play(.Woman_Screaming_Sfx_Screaming_Sound_Effect_320169, 0.8)
-			if imgui.Button("Lightning") do sound_play(.Lightning_237994, 0.8)
-			if imgui.Button("Fireworks") do sound_play(.Fireworks_13_419033, 0.4)
-			if imgui.Button("Train horn") do sound_play(.Train_Horn_337875, 0.8)
-			if imgui.Button("Tick tick ding") do sound_play(.Ticktickding, 0.8)
-			if imgui.Button("Ding") do sound_play(.Ding_126626, 0.8)
-			if imgui.Button("Rain") do sound_play(.Calming_Rain_257596, 0.8)
-			if imgui.Button("Meow") do sound_play(.Cat_Meow, 0.6)
-			if imgui.Button("Yeeeaaahhh") do sound_play(.Yeeeeaaaaaaaahh, 1)
+			controls_group_begin("Sound")
+
+			if controls_button("Break glass", .Sound, button_width) do sound_play(.Glass_Breaking_Sound_Effect_HD_Glass_Shattering_Sound_Effect_TcnufvBffcY, 0.8)
+			imgui.SameLine()
+			if controls_button("Gunshot", .Sound, button_width) do sound_play(.Single_Gunshot_54_40780, 0.8)
+			imgui.SameLine()
+			if controls_button("Scream, lady!", .Sound, button_width) do sound_play(.Woman_Screaming_Sfx_Screaming_Sound_Effect_320169, 0.8)
+			imgui.SameLine()
+			if controls_button("Fireworks", .Sound, button_width) do sound_play(.Fireworks_13_419033, 0.4)
+			if controls_button("Train horn", .Sound, button_width) do sound_play(.Train_Horn_337875, 0.8)
+			imgui.SameLine()
+			if controls_button("Tick tick ding", .Sound, button_width) do sound_play(.Ticktickding, 0.8)
+			imgui.SameLine()
+			if controls_button("Ding", .Sound, button_width) do sound_play(.Ding_126626, 0.8)
+			imgui.SameLine()
+			if controls_button("Lightning", .Sound, button_width) do sound_play(.Lightning_237994, 0.8)
+			imgui.SameLine()
+			if controls_button("Rain", .Sound, button_width) do sound_play(.Calming_Rain_257596, 0.8)
+			imgui.SameLine()
+			if controls_button("Meow", .Sound, button_width) do sound_play(.Cat_Meow, 0.6)
+			imgui.SameLine()
+			if controls_button("Yeeeaaahhh", .Sound, button_width) do sound_play(.Yeeeeaaaaaaaahh, 1)
+
+			controls_group_end()
 
 			imgui.EndTabItem()
 		}

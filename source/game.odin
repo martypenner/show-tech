@@ -142,11 +142,13 @@ game_init_window :: proc() {
 	imgui.CreateContext()
 	io = imgui.GetIO()
 	io.ConfigFlags += {.NavEnableKeyboard, .DockingEnable}
+	imgui.FontAtlas_AddFontDefaultVector(io.Fonts)
 
 	imgui.StyleColorsDark()
 	style := imgui.GetStyle()
 	imgui.Style_ScaleAllSizes(style, main_scale)
 	style.FontScaleDpi = main_scale
+	style.FontSizeBase = 15
 
 	imsdl3.InitForSDLRenderer(window, renderer)
 	imsdlrenderer3.Init(renderer)
