@@ -1,7 +1,6 @@
 package generate_enums
 
 import "core:c"
-import "core:crypto/hash"
 import "core:encoding/json"
 import "core:fmt"
 import "core:hash/xxhash"
@@ -88,11 +87,8 @@ main :: proc() {
 	}
 
 	playlists: [dynamic]Playlist
-	defer delete(playlists)
 	sound_effects := load_sound_effects()
-	defer delete(sound_effects)
 	tracks: [dynamic]GeneratedTrack
-	defer delete(tracks)
 
 	pool: thread.Pool
 	thread.pool_init(

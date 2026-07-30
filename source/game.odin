@@ -40,15 +40,24 @@ _ :: fmt
 gm: ^GameMemory
 
 GameMemory :: struct {
-	should_run:     bool,
-	sound_settings: ^SoundSettings,
-	lighting:       struct {
+	should_run:            bool,
+	sound_settings:        ^SoundSettings,
+	lighting:              struct {
 		socket:         Maybe(net.UDP_Socket),
 		endpoint:       net.Endpoint,
 		active_look:    LightingLook,
 		fx:             [LightingFxKind]LightingFx,
 		fx_osc_address: [LightingFxKind]string,
 	},
+	// imgui state preserved across hot reloads. imgui's context, allocator
+	// functions, and SDL handles are DLL-global statics that reset to nil when
+	// a new DLL loads, so they must be saved on first init and restored here.
+	imgui_context:         ^imgui.Context,
+	imgui_alloc_func:      imgui.MemAllocFunc,
+	imgui_free_func:       imgui.MemFreeFunc,
+	imgui_alloc_user_data: rawptr,
+	window:                ^sdl.Window,
+	renderer:              ^sdl.Renderer,
 }
 
 window: ^sdl.Window
@@ -222,9 +231,34 @@ game_memory_size :: proc() -> int {
 game_hot_reloaded :: proc(mem: rawptr) {
 	gm = (^GameMemory)(mem)
 
-	// Restore Module-level pointers that point into `gm`. A freshly loaded DLL
-	// starts these globals nil, so they must be re-pointed here before the next
-	// frame uses them.
+	if gm.imgui_context == nil {
+		// First load: imgui context and SDL handles exist in this DLL's
+		// globals. Save them into GameMemory so future reloads can restore
+		// them into the new DLL's fresh globals.
+		gm.imgui_context = imgui.GetCurrentContext()
+		imgui.GetAllocatorFunctions(
+			&gm.imgui_alloc_func,
+			&gm.imgui_free_func,
+			&gm.imgui_alloc_user_data,
+		)
+		gm.window = window
+		gm.renderer = renderer
+	} else {
+		// Hot reload: the new DLL's globals are nil. Restore imgui context
+		// and allocator functions (both are DLL-global statics in imgui, not
+		// per-context), plus the SDL handles that game_init_window set up
+		// once and never re-runs.
+		window = gm.window
+		renderer = gm.renderer
+		imgui.SetCurrentContext(gm.imgui_context)
+		imgui.SetAllocatorFunctions(
+			gm.imgui_alloc_func,
+			gm.imgui_free_func,
+			&gm.imgui_alloc_user_data,
+		)
+		io = imgui.GetIO()
+	}
+
 	sound_hot_reloaded(gm.sound_settings)
 }
 
