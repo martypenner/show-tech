@@ -193,6 +193,8 @@ wave_editor :: proc() {
 	}
 	imgui.SetCursorScreenPos({origin.x, bottom_y + WAVEFORM_HANDLE_RADIUS})
 
+	imgui.Dummy({0, 0})
+
 	if changed {
 		if sound_settings.wave_editor_start_fraction == 0 &&
 		   sound_settings.wave_editor_end_fraction == 1 {

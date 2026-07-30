@@ -8,48 +8,56 @@
 "target_loudness" = -8.00000000
 "music_track_bounds" = {
   "assets/sounds/music/Needle Droppers/Beastie Boys - Sabotage.mp3" = {
-    "file_hash" = "14873540764860444401"
-    "start_time" = 16.30903244
+    "file_hash" = "15211253356062800590027182999831532181"
+    "start_time" = 16.03171921
     "end_time" = 178.44000244
   }
   "assets/sounds/music/Needle Droppers/DJ Snake, Lil Jon - Turn Down for What.mp3" = {
-    "file_hash" = "12717819796988393344"
-    "start_time" = 18.38566399
+    "file_hash" = "2708115304927306055348590967072795425"
+    "start_time" = 18.36770821
     "end_time" = 213.73333740
   }
   "assets/sounds/music/Needle Droppers/Elvis Presley & Britney Spears - Toxic Las Vegas (Jamieson Shaw Remix) [KQddH8OxbPc].mp3" = {
-    "file_hash" = "3084350857716967788"
-    "start_time" = 8.81291008
+    "file_hash" = "152387080661924584640032029172091798775"
+    "start_time" = 8.76217747
     "end_time" = 172.54750061
   }
   "assets/sounds/music/Needle Droppers/LMFAO, Lauren Bennett, GoonRock - Party Rock Anthem.mp3" = {
-    "file_hash" = "9675751967890409623"
-    "start_time" = 136.72480774
+    "file_hash" = "104737984558650890047039757195254035677"
+    "start_time" = 14.93272781
     "end_time" = 262.17333984
   }
   "assets/sounds/music/Needle Droppers/Led Zeppelin - Immigrant Song - Remaster.mp3" = {
-    "file_hash" = "1649752218585338732"
-    "start_time" = 1.76915407
+    "file_hash" = "145601645177649803080616646119723560274"
+    "start_time" = 1.71386814
     "end_time" = 146.25007629
   }
   "assets/sounds/music/Needle Droppers/Macklemore, Ryan Lewis, Macklemore & Ryan Lewis, Ray Dalton - Can't Hold Us (feat. Ray Dalton).mp3" = {
-    "file_hash" = "13435782561187443313"
-    "start_time" = 98.26748657
+    "file_hash" = "282567528288816476209246837760241764353"
+    "start_time" = 98.49319458
     "end_time" = 258.34280396
   }
+  "assets/sounds/music/Needle Droppers/Rage Against The Machine - Bulls On Parade.mp3" = {
+    "file_hash" = "203162276620023569183894984599139585103"
+    "start_time" = 0.35854167
+    "end_time" = 229.46665955
+  }
   "assets/sounds/music/Needle Droppers/Rage Against The Machine - Killing In The Name.mp3" = {
-    "file_hash" = "7670549487279451885"
-    "start_time" = 17.28025055
+    "file_hash" = "235616280421987998496843159714503663089"
+    "start_time" = 17.14854240
     "end_time" = 313.57333374
   }
   "assets/sounds/music/Needle Droppers/Van Halen - Jump - 2015 Remaster.mp3" = {
-    "file_hash" = "2090831225839605522"
-    "start_time" = 7.14407301
+    "file_hash" = "319730099743252599213960879211026821119"
+    "start_time" = 7.14173222
     "end_time" = 241.59956360
   }
   "assets/sounds/music/Needle Droppers/Wafia - I'm Good.mp3" = {
-    "file_hash" = "18365498080418082270"
-    "start_time" = 32.10344315
+    "file_hash" = "254538169665704316610976937609272804093"
+    "start_time" = 32.06148911
     "end_time" = 217.13601685
   }
+}
+"played_track_paths" = {
+
 }
