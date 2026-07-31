@@ -6,6 +6,9 @@ set -eu
 # folders, which it locates via paths relative to the current directory.
 OUT_DIR=build/hot_reload
 EXE=build/game_hot_reload.bin
+HOMEBREW_PREFIX="$(brew --prefix)"
+SDL3_MIXER_PREFIX="$(brew --prefix sdl3_mixer)"
+SDL3_MIXER_LINKER_FLAGS="-L$SDL3_MIXER_PREFIX/lib -L$HOMEBREW_PREFIX/lib -Wl,-rpath,$SDL3_MIXER_PREFIX/lib -Wl,-rpath,$HOMEBREW_PREFIX/lib"
 
 mkdir -p $OUT_DIR
 
@@ -22,7 +25,8 @@ esac
 # Build the game. Note that the game goes into $OUT_DIR while the exe goes into
 # build/.
 echo "Building game$DLL_EXT"
-odin build source -build-mode:dll -out:$OUT_DIR/game_tmp$DLL_EXT -strict-style -vet -debug
+odin build source -build-mode:dll -out:$OUT_DIR/game_tmp$DLL_EXT -strict-style -vet -debug \
+	-extra-linker-flags:"$SDL3_MIXER_LINKER_FLAGS"
 
 # Need to use a temp file on Linux because it first writes an empty `game.so`,
 # which the game will load before it is actually fully written.
@@ -36,7 +40,8 @@ if pgrep -f $EXE >/dev/null; then
 fi
 
 echo "Building $EXE"
-odin build source/main_hot_reload -out:$EXE -strict-style -vet -debug
+odin build source/main_hot_reload -out:$EXE -strict-style -vet -debug \
+	-extra-linker-flags:"$SDL3_MIXER_LINKER_FLAGS"
 
 if [ $# -ge 1 ] && [ $1 == "run" ]; then
 	echo "Running $EXE"
