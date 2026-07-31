@@ -125,7 +125,7 @@ controls_draw :: proc() {
 		music_tab_selected := false
 		if imgui.BeginTabItem("Controls") {
 			xs := strings.clone_to_cstring(
-				strings.repeat("X", 14, context.temp_allocator),
+				strings.repeat("X", 15, context.temp_allocator),
 				context.temp_allocator,
 			)
 			button_width := imgui.CalcTextSize(xs).x + imgui.GetStyle().FramePadding.x * 2
@@ -570,7 +570,7 @@ controls_draw :: proc() {
 					lighting_look_activate(.House)
 				}
 				imgui.SameLine()
-				if controls_button("Scene", .Lighting, button_width) {
+				if controls_button("Scene##Lighting", .Lighting, button_width) {
 					lighting_fx_deactivate_all()
 					lighting_look_activate(.Scene)
 				}
@@ -588,12 +588,57 @@ controls_draw :: proc() {
 					)
 				}
 				imgui.SameLine()
-				if controls_button("Rainbow sting", .Lighting, button_width) {
-					// Toggle: head for the opposite of wherever the last envelope
-					// was going, starting from the current weight.
+				if controls_button("Center focus##Lighting", .Lighting, button_width) {
+					lighting_fx_deactivate_all()
+					lighting_look_activate(.CenterFocus)
+				}
+				imgui.SameLine()
+				{
+					fx := gm.lighting.fx[.Innuendo]
+					text := "Innuendo"
+					target_prev: f32
+					if fx.weight_current > 0 {
+						text = "Cancel Innuendo"
+						target_prev = fx.keys[fx.key_count - 1].weight
+					}
+					if controls_button(
+						strings.clone_to_cstring(
+							fmt.tprint(text, "##Lighting"),
+							context.temp_allocator,
+						),
+						.Lighting,
+						button_width,
+					) {
+						// Toggle: head for the opposite of wherever the last envelope
+						// was going, starting from the current weight.
+						lighting_fx_run(.Innuendo, {{0, fx.weight_current}, {2, 1 - target_prev}})
+						lighting_look_activate(.Scene)
+					}
+				}
+				imgui.SameLine()
+				{
 					fx := gm.lighting.fx[.RainbowSting]
-					target_prev := fx.key_count > 0 ? fx.keys[fx.key_count - 1].weight : 0
-					lighting_fx_run(.RainbowSting, {{0, fx.weight_current}, {2, 1 - target_prev}})
+					text := " Rainbow Sting"
+					target_prev: f32
+					if fx.weight_current > 0 {
+						text = "    Cancel\n Rainbow Sting"
+						target_prev = fx.keys[fx.key_count - 1].weight
+					}
+					if controls_button(
+						strings.clone_to_cstring(
+							fmt.tprint(text, "##Lighting"),
+							context.temp_allocator,
+						),
+						.Lighting,
+						button_width,
+					) {
+						// Toggle: head for the opposite of wherever the last envelope
+						// was going, starting from the current weight.
+						lighting_fx_run(
+							.RainbowSting,
+							{{0, fx.weight_current}, {2, 1 - target_prev}},
+						)
+					}
 				}
 
 				controls_group_end()
