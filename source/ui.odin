@@ -761,7 +761,7 @@ controls_draw :: proc() {
 			imgui.EndTabItem()
 		}
 
-		if imgui.BeginTabItem("Music") {
+		if imgui.BeginTabItem("Music editor") {
 			music_tab_selected = true
 
 			imgui.BeginGroup()
