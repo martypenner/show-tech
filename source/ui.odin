@@ -677,7 +677,34 @@ controls_draw :: proc() {
 					{0, imgui.GetContentRegionAvail().y},
 					child_flags = {.AutoResizeY, .Borders},
 				)
+
+				imgui.AlignTextToFramePadding()
 				imgui.TextUnformatted("Music")
+
+				{
+					primary := gm.sound_settings.music_playback_primary
+					if primary != nil {
+						imgui.SameLine()
+
+						style := button_styles[.Sound]
+						imgui.PushStyleVarX(.FramePadding, 16)
+						imgui.PushStyleColorImVec4(.Button, style.base)
+						imgui.PushStyleColorImVec4(.ButtonHovered, style.hovered)
+						imgui.PushStyleColorImVec4(.ButtonActive, style.active)
+						if imgui.Button("Fade out", {0, 0}) {
+							for &playback in gm.sound_settings.music_playbacks {
+								if playback.mixer_track == nil do continue
+								audible := music_playback_volume_at(
+									&playback,
+									mixer.GetTrackPlaybackPosition(playback.mixer_track),
+								)
+								music_playback_volume_set(&playback, {{0, audible}, {2, 0}})
+							}
+						}
+						imgui.PopStyleColor(3)
+						imgui.PopStyleVar(1)
+					}
+				}
 
 				if imgui.BeginChild("Playlists##ControlList", {0, 0}, {.FrameStyle}) {
 					for &playlist, index in sound_settings.playlists {
