@@ -32,6 +32,7 @@ import imsdlrenderer3 "../vendor/odin-imgui/imgui_impl_sdlrenderer3"
 import "core:fmt"
 import "core:log"
 import "core:net"
+import "core:strings"
 import sdl "vendor:sdl3"
 
 _ :: log
@@ -138,8 +139,14 @@ game_init_window :: proc() {
 		{.RESIZABLE, .HIDDEN, .HIGH_PIXEL_DENSITY},
 	)
 	ensure(window != nil, string(sdl.GetError()))
-	// Might need to change this for mac
-	renderer = sdl.CreateRenderer(window, "vulkan")
+	renderer_name := "vulkan"
+	when ODIN_OS == .Darwin {
+		renderer_name = "metal"
+	}
+	renderer = sdl.CreateRenderer(
+		window,
+		strings.clone_to_cstring(renderer_name, context.temp_allocator),
+	)
 	ensure(renderer != nil, string(sdl.GetError()))
 	// Might need a way to limit this further to 60 fps consistently
 	sdl.SetRenderVSync(renderer, 1)
