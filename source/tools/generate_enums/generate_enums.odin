@@ -238,18 +238,14 @@ main :: proc() {
 	fmt.sbprintln(&builder, "\tfile_hash: string,")
 	fmt.sbprintln(&builder, "\tactive_rms: f32,")
 	fmt.sbprintln(&builder, "\tduration_seconds: f32,")
-	fmt.sbprintln(&builder, "\twaveform_samples: [TRACK_WAVEFORM_SAMPLE_COUNT]i8,")
+	fmt.sbprintln(&builder, "\twaveform_samples_offset: int,")
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, "TRACKS := map[string]GeneratedTrack {")
+	fmt.sbprintln(&builder, "@(rodata)")
+	fmt.sbprintln(&builder, "TRACK_WAVEFORM_SAMPLES := [?]i8 {")
 	for track in tracks {
-		fmt.sbprintf(&builder, "\t%q = {{\n", track.path)
-		fmt.sbprintf(&builder, "\t\tfile_hash = %q,\n", fmt.aprintf("%v", u128(track.file_hash)))
-		fmt.sbprintf(&builder, "\t\tactive_rms = %.8f,\n", track.active_rms)
-		fmt.sbprintf(&builder, "\t\tduration_seconds = %.8f,\n", track.duration_seconds)
-		fmt.sbprintln(&builder, "\t\twaveform_samples = {")
 		for value, index in track.waveform_samples {
-			if index % 32 == 0 do fmt.sbprint(&builder, "\t\t\t")
+			if index % 32 == 0 do fmt.sbprint(&builder, "\t")
 			fmt.sbprintf(&builder, "%d,", value)
 			if index % 32 == 31 || index == len(track.waveform_samples) - 1 {
 				fmt.sbprintln(&builder)
@@ -257,7 +253,20 @@ main :: proc() {
 				fmt.sbprint(&builder, " ")
 			}
 		}
-		fmt.sbprintln(&builder, "\t\t},")
+	}
+	fmt.sbprintln(&builder, "}")
+	fmt.sbprintln(&builder)
+	fmt.sbprintln(&builder, "TRACKS := map[string]GeneratedTrack {")
+	for track, track_index in tracks {
+		fmt.sbprintf(&builder, "\t%q = {{\n", track.path)
+		fmt.sbprintf(&builder, "\t\tfile_hash = %q,\n", fmt.aprintf("%v", u128(track.file_hash)))
+		fmt.sbprintf(&builder, "\t\tactive_rms = %.8f,\n", track.active_rms)
+		fmt.sbprintf(&builder, "\t\tduration_seconds = %.8f,\n", track.duration_seconds)
+		fmt.sbprintf(
+			&builder,
+			"\t\twaveform_samples_offset = %d,\n",
+			track_index * TRACK_WAVEFORM_SAMPLE_COUNT,
+		)
 		fmt.sbprintln(&builder, "\t},")
 	}
 	fmt.sbprintln(&builder, "}")
