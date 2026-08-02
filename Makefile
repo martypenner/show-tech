@@ -1,6 +1,9 @@
 .PHONY: all build build-web generate-enums run test format clean
 
 PIDFILE=build/hot_reload/game.pid
+HOMEBREW_PREFIX=$(shell brew --prefix)
+SDL3_MIXER_PREFIX=$(shell brew --prefix sdl3_mixer)
+SDL3_MIXER_LINKER_FLAGS=-L$(SDL3_MIXER_PREFIX)/lib -L$(HOMEBREW_PREFIX)/lib -Wl,-rpath,$(SDL3_MIXER_PREFIX)/lib -Wl,-rpath,$(HOMEBREW_PREFIX)/lib
 
 all: build
 
@@ -12,7 +15,7 @@ build-web:
 
 generate-enums:
 	@echo "Generating enums and hashes..."
-	@odin run source/tools/generate_enums >/dev/null
+	@odin run source/tools/generate_enums -extra-linker-flags:"$(SDL3_MIXER_LINKER_FLAGS)" >/dev/null
 
 run: clean
 	@./scripts/build_hot_reload.sh run
