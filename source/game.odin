@@ -114,7 +114,6 @@ draw :: proc() {
 	sdl.RenderClear(renderer)
 	imsdlrenderer3.RenderDrawData(imgui.GetDrawData(), renderer)
 	sdl.RenderPresent(renderer)
-
 }
 
 @(export)
@@ -132,12 +131,11 @@ game_init_window :: proc() {
 
 	ensure(sdl.Init({.VIDEO, .AUDIO}))
 	main_scale := sdl.GetDisplayContentScale(sdl.GetPrimaryDisplay())
-	window = sdl.CreateWindow(
-		"Showtime",
-		window_width,
-		window_height,
-		{.RESIZABLE, .HIDDEN, .HIGH_PIXEL_DENSITY},
-	)
+	window_flags := sdl.WindowFlags{.RESIZABLE, .HIDDEN, .HIGH_PIXEL_DENSITY}
+	when !ODIN_DEBUG {
+		window_flags += {.MAXIMIZED}
+	}
+	window = sdl.CreateWindow("Showtime", window_width, window_height, window_flags)
 	ensure(window != nil, string(sdl.GetError()))
 	renderer_name := "vulkan"
 	when ODIN_OS == .Darwin {
