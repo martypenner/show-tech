@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 set -eu
 
-# OUT_DIR is for the game DLL and friends. The exe goes in build/ too, but must
+# OUT_DIR_HOT_RELOAD is for the game DLL and friends. The exe goes in build/ too, but must
 # be run from the project root so it finds the assets/ and build/hot_reload/
 # folders, which it locates via paths relative to the current directory.
-OUT_DIR=build/hot_reload
-EXE=build/game_hot_reload.bin
-HOMEBREW_PREFIX="$(brew --prefix)"
-SDL3_MIXER_PREFIX="$(brew --prefix sdl3_mixer)"
-SDL3_MIXER_LINKER_FLAGS="-L$SDL3_MIXER_PREFIX/lib -L$HOMEBREW_PREFIX/lib -Wl,-rpath,$SDL3_MIXER_PREFIX/lib -Wl,-rpath,$HOMEBREW_PREFIX/lib"
+. scripts/config.sh
 
-mkdir -p $OUT_DIR
+mkdir -p $OUT_DIR_HOT_RELOAD
 
 # Figure out which DLL extension to use based on platform.
 case $(uname) in
@@ -22,15 +18,15 @@ case $(uname) in
 	;;
 esac
 
-# Build the game. Note that the game goes into $OUT_DIR while the exe goes into
+# Build the game. Note that the game goes into $OUT_DIR_HOT_RELOAD while the exe goes into
 # build/.
 echo "Building game$DLL_EXT"
-odin build source -build-mode:dll -out:$OUT_DIR/game_tmp$DLL_EXT -strict-style -vet -debug \
+odin build source -build-mode:dll -out:$OUT_DIR_HOT_RELOAD/game_tmp$DLL_EXT -strict-style -vet -debug \
 	-extra-linker-flags:"$SDL3_MIXER_LINKER_FLAGS"
 
 # Need to use a temp file on Linux because it first writes an empty `game.so`,
 # which the game will load before it is actually fully written.
-mv $OUT_DIR/game_tmp$DLL_EXT $OUT_DIR/game$DLL_EXT
+mv $OUT_DIR_HOT_RELOAD/game_tmp$DLL_EXT $OUT_DIR_HOT_RELOAD/game$DLL_EXT
 
 # If the executable is already running, then don't try to build and start it.
 # -f is there to make sure we match against full name, including .bin
@@ -46,5 +42,5 @@ odin build source/main_hot_reload -out:$EXE -strict-style -vet -debug \
 if [ $# -ge 1 ] && [ $1 == "run" ]; then
 	echo "Running $EXE"
 	./$EXE &
-	echo $! >"$OUT_DIR/game.pid"
+	echo $! >"$OUT_DIR_HOT_RELOAD/game.pid"
 fi

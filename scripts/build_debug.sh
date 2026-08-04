@@ -5,11 +5,12 @@ set -eu
 # There is no hot reloading and no separate game library.
 
 OUT_DIR="build/debug"
-HOMEBREW_PREFIX="$(brew --prefix)"
-SDL3_MIXER_PREFIX="$(brew --prefix sdl3_mixer)"
-SDL3_MIXER_LINKER_FLAGS="-L$SDL3_MIXER_PREFIX/lib -L$HOMEBREW_PREFIX/lib -Wl,-rpath,$SDL3_MIXER_PREFIX/lib -Wl,-rpath,$HOMEBREW_PREFIX/lib"
 mkdir -p "$OUT_DIR"
+. scripts/config.sh
 odin build source/main_release -out:$OUT_DIR/game_debug.bin -strict-style -vet -debug \
 	-extra-linker-flags:"$SDL3_MIXER_LINKER_FLAGS"
-cp -R assets $OUT_DIR
+# Assets are huge, so link instead of copying (Windows .bat copies instead).
+rm -f "$OUT_DIR/assets" "$OUT_DIR/settings.sjson"
+ln -s ../../assets "$OUT_DIR/assets"
+ln -s ../../settings.sjson "$OUT_DIR/settings.sjson"
 echo "Debug build created in $OUT_DIR"
