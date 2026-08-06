@@ -110,7 +110,7 @@ draw :: proc() {
 	controls_draw()
 	imgui.Render()
 	sdl.SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
-	sdl.SetRenderDrawColor(renderer, 16, 16, 16, 255)
+	sdl.SetRenderDrawColor(renderer, 16, 16, 16, sdl.ALPHA_OPAQUE)
 	sdl.RenderClear(renderer)
 	imsdlrenderer3.RenderDrawData(imgui.GetDrawData(), renderer)
 	sdl.RenderPresent(renderer)
