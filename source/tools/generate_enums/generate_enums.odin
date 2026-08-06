@@ -177,7 +177,7 @@ main :: proc() {
 						data.rms_cache,
 					)
 					track := GeneratedTrack {
-						path             = strings.clone(data.path),
+						path             = data.path,
 						file_hash        = FileHash(digest),
 						active_rms       = cache_entry.active_rms,
 						duration_seconds = cache_entry.duration_seconds,
