@@ -69,7 +69,7 @@ controls_button :: proc(label: cstring, kind: UI_Type, width: f32) -> bool {
 }
 
 controls_group_begin :: proc(label: cstring) {
-	imgui.BeginChild(label, child_flags = {.AutoResizeY, .Borders})
+	imgui.BeginChild(label, child_flags = {.AutoResizeY, .Borders, .NavFlattened})
 	imgui.TextUnformatted(label)
 }
 
@@ -121,7 +121,7 @@ controls_draw :: proc() {
 	)
 	imgui.PopStyleVar(3)
 
-	if imgui.BeginTabBar("TopTabs", {}) {
+	if imgui.BeginTabBar("TopTabs") {
 		music_tab_selected := false
 		if imgui.BeginTabItem("Controls") {
 			xs := strings.clone_to_cstring(

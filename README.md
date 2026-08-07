@@ -1,6 +1,6 @@
 # Showtime
 
-This is an [Odin](https://github.com/odin-lang/Odin) app using SDL3 and SDL3_mixer on desktop, with [hot reloading](http://zylinski.se/posts/hot-reload-gameplay-code/) pre-setup. The web build continues to use Raylib.
+This is an [Odin](https://github.com/odin-lang/Odin) app using SDL3 and SDL3_mixer on desktop, with [hot reloading](http://zylinski.se/posts/hot-reload-gameplay-code/) pre-setup.
 
 Supported platforms: Windows, macOS, Linux and [web](#web-build).
 
