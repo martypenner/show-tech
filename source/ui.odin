@@ -245,7 +245,7 @@ controls_draw :: proc() {
 
 				if controls_button("To house", .SoundAndLighting, button_width) {
 					if gm.sound_settings.use_house_music {
-						playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Chill)
+						playlist := playlist_find_by_name(.Kids_on_Bikes_80s_Explore)
 						ensure(playlist != nil, "Couldn't find playlist for To_House")
 
 						track := playlist_pick_random_track(playlist)
@@ -254,7 +254,7 @@ controls_draw :: proc() {
 						new_playback := music_playback_start_playlist_track(
 							playlist,
 							track,
-							0.2,
+							0.12,
 							gm.sound_settings.fade_in_time,
 						)
 						for &playback in gm.sound_settings.music_playbacks {
@@ -361,7 +361,7 @@ controls_draw :: proc() {
 						new_playback := music_playback_start_playlist_track(
 							playlist,
 							track,
-							1,
+							0.8,
 							gm.sound_settings.fade_in_time,
 						)
 						for &playback in gm.sound_settings.music_playbacks {
@@ -475,7 +475,7 @@ controls_draw :: proc() {
 						new_playback := music_playback_start_playlist_track(
 							playlist,
 							track,
-							0.4,
+							0.3,
 							gm.sound_settings.fade_in_time,
 						)
 						ensure(new_playback != nil, "Couldn't start Oscar_Moment playback")
@@ -483,8 +483,8 @@ controls_draw :: proc() {
 							new_playback,
 							{
 								{0, 0},
-								{gm.sound_settings.fade_in_time, 0.4},
-								{gm.sound_settings.fade_in_time + 20, 0.6},
+								{gm.sound_settings.fade_in_time, 0.3},
+								{gm.sound_settings.fade_in_time + 20, 0.5},
 							},
 						)
 
