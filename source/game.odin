@@ -50,6 +50,7 @@ GameMemory :: struct {
 		fx:             [LightingFxKind]LightingFx,
 		fx_osc_address: [LightingFxKind]string,
 	},
+	active_tab:            Tab,
 	// imgui state preserved across hot reloads. imgui's context, allocator
 	// functions, and SDL handles are DLL-global statics that reset to nil when
 	// a new DLL loads, so they must be saved on first init and restored here.
@@ -85,9 +86,15 @@ update :: proc() {
 				   event.window.windowID == sdl.GetWindowID(window)) {
 			gm.should_run = false
 		}
-		when ODIN_DEBUG {
-			if event.type == .KEY_DOWN && event.key.key == sdl.K_ESCAPE {
-				gm.should_run = false
+		if event.type == .KEY_DOWN && !event.key.repeat {
+			when ODIN_DEBUG {
+				if event.key.key == sdl.K_ESCAPE {
+					gm.should_run = false
+				}
+			}
+
+			if gm.active_tab == .Controls {
+				hotkeys_handle_key(event.key.key)
 			}
 		}
 
@@ -162,7 +169,7 @@ game_init_window :: proc() {
 	style := imgui.GetStyle()
 	imgui.Style_ScaleAllSizes(style, main_scale)
 	style.FontScaleDpi = main_scale
-	style.FontSizeBase = 15
+	style.FontSizeBase = 14
 
 	imsdl3.InitForSDLRenderer(window, renderer)
 	imsdlrenderer3.Init(renderer)
