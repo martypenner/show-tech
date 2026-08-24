@@ -478,6 +478,11 @@ lighting_fade_to_black :: proc() {
 	lighting_fx_run(.Blackout, {{0, gm.lighting.fx[.Blackout].weight_current}, {2, 1}})
 }
 
+lighting_cut_to_black :: proc() {
+	lighting_fx_deactivate_all()
+	lighting_fx_run(.Blackout, {{0, 1}})
+}
+
 lighting_center_focus :: proc() {
 	lighting_fx_deactivate_all()
 	lighting_look_activate(.CenterFocus)
@@ -575,10 +580,12 @@ hotkeys_handle_key :: proc(key: sdl.Keycode) {
 	case sdl.K_L:
 		lighting_fade_to_black()
 	case sdl.K_U:
-		lighting_center_focus()
+		lighting_cut_to_black()
 	case sdl.K_Y:
-		lighting_innuendo_toggle()
+		lighting_center_focus()
 	case sdl.K_SEMICOLON:
+		lighting_innuendo_toggle()
+	case sdl.K_BACKSLASH:
 		lighting_rainbow_sting_toggle()
 	case sdl.K_Z:
 		sound_play_break_glass()
@@ -772,7 +779,11 @@ controls_draw :: proc() {
 					lighting_fade_to_black()
 				}
 				imgui.SameLine()
-				if controls_button("Center focus (u)##Lighting", .Lighting, button_width) {
+				if controls_button("Cut to black (u)##Lighting", .Lighting, button_width) {
+					lighting_cut_to_black()
+				}
+				imgui.SameLine()
+				if controls_button("Center focus (y)##Lighting", .Lighting, button_width) {
 					lighting_center_focus()
 				}
 				imgui.SameLine()
@@ -786,7 +797,7 @@ controls_draw :: proc() {
 					}
 					if controls_button(
 						strings.clone_to_cstring(
-							fmt.tprint(text, "(y)##Lighting"),
+							fmt.tprint(text, "(;)##Lighting"),
 							context.temp_allocator,
 						),
 						.Lighting,
@@ -806,7 +817,7 @@ controls_draw :: proc() {
 					}
 					if controls_button(
 						strings.clone_to_cstring(
-							fmt.tprint(text, " (;)##Lighting"),
+							fmt.tprint(text, " (\\)##Lighting"),
 							context.temp_allocator,
 						),
 						.Lighting,
