@@ -100,12 +100,10 @@ update :: proc() {
 
 		if event.type == .WINDOW_RESIZED {
 			sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
-			// controls_prepare_for_render(gm.ui.items[:], window_width, window_height)
 		}
 	}
 
 	sound_update()
-	// ui_control_set_value(&gm.ui, .Music_Volume, sound_music_current_volume())
 	lighting_update()
 }
 
@@ -162,7 +160,7 @@ game_init_window :: proc() {
 	imgui.CHECKVERSION()
 	imgui.CreateContext()
 	io = imgui.GetIO()
-	io.ConfigFlags += {.NavEnableKeyboard, .DockingEnable}
+	io.ConfigFlags += {.NavEnableKeyboard}
 	imgui.FontAtlas_AddFontDefaultVector(io.Fonts)
 
 	imgui.StyleColorsDark()
