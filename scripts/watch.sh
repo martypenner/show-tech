@@ -32,9 +32,9 @@ if command -v inotifywait >/dev/null 2>&1; then
 		done &
 elif command -v fswatch >/dev/null 2>&1; then
 	echo "Watching source/ for changes (fswatch)..."
-	fswatch -0r ./source |
+	fswatch -0r --latency 0.2 ./source |
 		while IFS= read -r -d '' path; do
-			while IFS= read -rt 0.2 -d '' next_path; do :; done
+			while IFS= read -r -d '' -t 1 next_event; do :; done
 			./scripts/build_hot_reload.sh
 		done &
 else

@@ -6,6 +6,10 @@ set -eu
 # folders, which it locates via paths relative to the current directory.
 . scripts/config.sh
 
+# PID-suffixed temp name so overlapping builds don't share game_tmp-*.o link objects.
+GAME_TMP=$OUT_DIR_HOT_RELOAD/game_tmp.$$
+trap 'rm -rf "$GAME_TMP"*' EXIT
+
 mkdir -p $OUT_DIR_HOT_RELOAD
 
 # Figure out which DLL extension to use based on platform.
@@ -21,12 +25,12 @@ esac
 # Build the game. Note that the game goes into $OUT_DIR_HOT_RELOAD while the exe goes into
 # build/.
 echo "Building game$DLL_EXT"
-odin build source -build-mode:dll -out:$OUT_DIR_HOT_RELOAD/game_tmp$DLL_EXT -strict-style -vet -debug \
+odin build source -build-mode:dll -out:$GAME_TMP$DLL_EXT -strict-style -vet -debug \
 	-extra-linker-flags:"$SDL3_MIXER_LINKER_FLAGS"
 
 # Need to use a temp file on Linux because it first writes an empty `game.so`,
 # which the game will load before it is actually fully written.
-mv $OUT_DIR_HOT_RELOAD/game_tmp$DLL_EXT $OUT_DIR_HOT_RELOAD/game$DLL_EXT
+mv $GAME_TMP$DLL_EXT $OUT_DIR_HOT_RELOAD/game$DLL_EXT
 
 # If the executable is already running, then don't try to build and start it.
 # -f is there to make sure we match against full name, including .bin
