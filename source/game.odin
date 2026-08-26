@@ -86,7 +86,8 @@ update :: proc() {
 				   event.window.windowID == sdl.GetWindowID(window)) {
 			gm.should_run = false
 		}
-		if event.type == .KEY_DOWN && !event.key.repeat {
+		if event.type == .KEY_DOWN &&
+		   (!event.key.repeat || event.key.key == sdl.K_PLUS || event.key.key == sdl.K_MINUS) {
 			when ODIN_DEBUG {
 				if event.key.key == sdl.K_ESCAPE {
 					gm.should_run = false

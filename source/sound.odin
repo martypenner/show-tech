@@ -602,6 +602,18 @@ sound_music_current_volume :: proc() -> f32 {
 	return volume_current
 }
 
+music_volume_adjust :: proc(delta: f32) {
+	primary := sound_settings.music_playback_primary
+	if primary == nil || primary.mixer_track == nil do return
+	generated_track, ok := TRACKS[primary.source_path]
+	log.ensuref(ok, "Missing generated track metadata for %s", primary.source_path)
+	current :=
+		music_playback_volume_at(primary, mixer.GetTrackPlaybackPosition(primary.mixer_track)) *
+		track_volume_multiplier(generated_track.active_rms)
+	sound_settings.music_volume = math.clamp(current + delta, 0, 1)
+	music_playback_volume_set(primary, {{0, sound_settings.music_volume}})
+}
+
 music_current_label :: proc() -> string {
 	playback := sound_settings.music_playback_primary
 	if playback == nil do return "No music playing"

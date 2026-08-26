@@ -506,11 +506,11 @@ lighting_rainbow_sting_toggle :: proc() {
 }
 
 sound_play_break_glass :: proc() {
-	sound_play(.Glass_Breaking_Sound_Effect_HD_Glass_Shattering_Sound_Effect_TcnufvBffcY, 0.8)
+	sound_play(.Glass_Breaking_Sound_Effect_HD_Glass_Shattering_Sound_Effect_TcnufvBffcY, 0.9)
 }
 
 sound_play_gunshot :: proc() {
-	sound_play(.Single_Gunshot_54_40780, 0.6)
+	sound_play(.Single_Gunshot_54_40780, 0.7)
 }
 
 sound_play_scream_lady :: proc() {
@@ -522,15 +522,15 @@ sound_play_fireworks :: proc() {
 }
 
 sound_play_train_horn :: proc() {
-	sound_play(.Train_Horn_337875, 0.8)
+	sound_play(.Train_Horn_337875, 0.9)
 }
 
 sound_play_tick_tick_ding :: proc() {
-	sound_play(.Ticktickding, 0.8)
+	sound_play(.Ticktickding, 1.0)
 }
 
 sound_play_ding :: proc() {
-	sound_play(.Ding_126626, 0.8)
+	sound_play(.Ding_126626, 1.0)
 }
 
 sound_play_lightning :: proc() {
@@ -542,7 +542,7 @@ sound_play_rain :: proc() {
 }
 
 sound_play_meow :: proc() {
-	sound_play(.Cat_Meow, 0.6)
+	sound_play(.Cat_Meow, 0.7)
 }
 
 sound_play_yeeeaaahhh :: proc() {
@@ -551,6 +551,10 @@ sound_play_yeeeaaahhh :: proc() {
 
 hotkeys_handle_key :: proc(key: sdl.Keycode) {
 	switch key {
+	case sdl.K_PLUS:
+		music_volume_adjust(+0.005)
+	case sdl.K_MINUS:
+		music_volume_adjust(-0.005)
 	case sdl.K_A:
 		show_pre_show()
 	case sdl.K_R:
@@ -614,6 +618,7 @@ hotkeys_handle_key :: proc(key: sdl.Keycode) {
 	}
 }
 
+color := [3]f32{1, 1, 1}
 controls_draw :: proc() {
 	// imgui.ShowDemoWindow()
 
@@ -713,6 +718,11 @@ controls_draw :: proc() {
 				if controls_button("Post-show (r)", .SoundAndLighting, button_width) {
 					show_post_show()
 				}
+				imgui.SameLine()
+
+				if controls_button("Ave Maria (n)", .SoundAndLighting, button_width) {
+					show_ave_maria()
+				}
 
 				if controls_button("To house (s)", .SoundAndLighting, button_width) {
 					show_to_house()
@@ -731,10 +741,6 @@ controls_draw :: proc() {
 
 				if controls_button("Drop needle (m)", .Destructive, button_width) {
 					show_drop_needle()
-				}
-
-				if controls_button("Ave Maria (n)", .SoundAndLighting, button_width) {
-					show_ave_maria()
 				}
 
 				controls_group_end()
@@ -826,6 +832,39 @@ controls_draw :: proc() {
 						lighting_rainbow_sting_toggle()
 					}
 				}
+
+				origin := imgui.GetCursorScreenPos()
+				w := imgui.GetFrameHeight() * 4
+				imgui.InvisibleButton("##lights-start", {w, w})
+				imgui.SameLine()
+
+				draw_list := imgui.GetWindowDrawList()
+				r := w / 3
+
+				imgui.DrawList_AddRectFilled(
+					draw_list,
+					origin,
+					{origin.x + w, origin.y + w},
+					imgui.GetColorU32ImVec4({0.3, 0.3, 0.3, 1}),
+				)
+
+				imgui.DrawList_AddCircleFilled(
+					draw_list,
+					{origin.x + w / 2, origin.y + w / 2},
+					r,
+					imgui.GetColorU32ImVec4({color[0], color[1], color[2], 1}),
+				)
+
+			if imgui.ColorButton("colorpicker", {color[0], color[1], color[2], 1}) {
+				imgui.OpenPopup("##lights-color")
+			}
+
+			if imgui.BeginPopup("##lights-color") {
+				imgui.PushItemWidth(imgui.GetFrameHeight() * 8)
+				imgui.ColorPicker3("##lights-color-value", &color, {.NoSidePreview})
+				imgui.PopItemWidth()
+				imgui.EndPopup()
+			}
 
 				controls_group_end()
 			}
