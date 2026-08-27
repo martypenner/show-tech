@@ -869,7 +869,11 @@ controls_draw :: proc() {
 
 					if imgui.BeginPopup("##lights-color") {
 						imgui.PushItemWidth(imgui.GetFrameHeight() * 8)
-						imgui.ColorPicker3("##lights-color-value", &color, {.NoSidePreview})
+						imgui.ColorPicker3(
+							"##lights-color-value",
+							&color,
+							{.NoSidePreview, .PickerHueWheel},
+						)
 						imgui.PopItemWidth()
 						imgui.EndPopup()
 					}
