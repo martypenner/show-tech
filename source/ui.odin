@@ -833,37 +833,46 @@ controls_draw :: proc() {
 					}
 				}
 
-				origin := imgui.GetCursorScreenPos()
-				w := imgui.GetFrameHeight() * 4
-				imgui.InvisibleButton("##lights-start", {w, w})
-				imgui.SameLine()
+				{
+					origin := imgui.GetCursorScreenPos()
+					w := imgui.GetFrameHeight() * 4
+					imgui.SetNextItemAllowOverlap()
+					imgui.InvisibleButton("##lights-start", {w, w})
+					imgui.SameLine()
 
-				draw_list := imgui.GetWindowDrawList()
-				r := w / 3
+					draw_list := imgui.GetWindowDrawList()
+					r := w / 3
 
-				imgui.DrawList_AddRectFilled(
-					draw_list,
-					origin,
-					{origin.x + w, origin.y + w},
-					imgui.GetColorU32ImVec4({0.3, 0.3, 0.3, 1}),
-				)
+					imgui.DrawList_AddRectFilled(
+						draw_list,
+						origin,
+						{origin.x + w, origin.y + w},
+						imgui.GetColorU32ImVec4({0.3, 0.3, 0.3, 1}),
+					)
 
-				imgui.DrawList_AddCircleFilled(
-					draw_list,
-					{origin.x + w / 2, origin.y + w / 2},
-					r,
-					imgui.GetColorU32ImVec4({color[0], color[1], color[2], 1}),
-				)
+					imgui.DrawList_AddCircleFilled(
+						draw_list,
+						{origin.x + w / 2, origin.y + w / 2},
+						r,
+						imgui.GetColorU32ImVec4({color[0], color[1], color[2], 1}),
+					)
 
-				if imgui.ColorButton("colorpicker", {color[0], color[1], color[2], 1}) {
-					imgui.OpenPopup("##lights-color")
-				}
+					picker_button_w: f32 = 20
+					imgui.SetCursorScreenPos({origin.x + w - picker_button_w, origin.y})
+					if imgui.ColorButton(
+						"colorpicker",
+						{color[0], color[1], color[2], 1},
+						size = {picker_button_w, picker_button_w},
+					) {
+						imgui.OpenPopup("##lights-color")
+					}
 
-				if imgui.BeginPopup("##lights-color") {
-					imgui.PushItemWidth(imgui.GetFrameHeight() * 8)
-					imgui.ColorPicker3("##lights-color-value", &color, {.NoSidePreview})
-					imgui.PopItemWidth()
-					imgui.EndPopup()
+					if imgui.BeginPopup("##lights-color") {
+						imgui.PushItemWidth(imgui.GetFrameHeight() * 8)
+						imgui.ColorPicker3("##lights-color-value", &color, {.NoSidePreview})
+						imgui.PopItemWidth()
+						imgui.EndPopup()
+					}
 				}
 
 				controls_group_end()
