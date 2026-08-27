@@ -3,7 +3,6 @@ package game
 import imgui "../vendor/odin-imgui"
 import "core:fmt"
 import "core:log"
-import "core:math/rand"
 import "core:strings"
 import sdl "vendor:sdl3"
 import mixer "vendor:sdl3/mixer"
@@ -420,14 +419,8 @@ game_sounds_like_a_song :: proc() {
 
 		lighting_look_activate(.Scene)
 	} else {
-		playlist: ^Playlist
-		playlists_seen := 0
-		for &candidate in sound_settings.playlists {
-			if len(candidate.tracks) == 0 do continue
-			playlists_seen += 1
-			if rand.int_max(playlists_seen) == 0 do playlist = &candidate
-		}
-		ensure(playlist != nil, "Couldn't pick playlist for Sounds_Like_a_Song")
+		playlist := playlist_find_by_name(.Sounds_Like_a_Song)
+		ensure(playlist != nil, "Couldn't find playlist for Sounds_Like_a_Song")
 
 		for &playback in gm.sound_settings.music_playbacks {
 			if playback.mixer_track == nil do continue
