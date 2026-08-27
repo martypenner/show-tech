@@ -20,7 +20,11 @@ MUSIC_DIR :: "assets/sounds/music"
 FX_DIR :: "assets/sounds/fx"
 LAYOUT_DIR :: "resources"
 OUT_FILE :: "source/generated_enums.odin"
+OUT_DATA_FILE :: "assets/sounds/music.rms"
 CACHE_FILE :: "source/generated_playlists.rms_cache.sjson"
+
+TRACK_DATA_MAGIC :: string("RMST")
+TRACK_DATA_VERSION :: 1
 
 Playlist :: struct {
 	ident: string,
@@ -214,11 +218,8 @@ main :: proc() {
 	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder, "package game")
 	fmt.sbprintln(&builder)
-	fmt.sbprintln(
-		&builder,
-		"// Generated from assets/sounds/music by source/tools/generate_playlists.",
-	)
-	fmt.sbprintln(&builder, "// Do not edit by hand.")
+	fmt.sbprintln(&builder, "// Generated from assets/sounds/music and assets/sounds/fx by")
+	fmt.sbprintln(&builder, "// source/tools/generate_enums. Do not edit by hand.")
 	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder, "PlaylistName :: enum {")
 	for playlist in playlists {
@@ -229,45 +230,6 @@ main :: proc() {
 	fmt.sbprintln(&builder, "SoundEffectName :: enum {")
 	for sound_effect in sound_effects {
 		fmt.sbprintf(&builder, "\t%s,\n", sound_effect.ident)
-	}
-	fmt.sbprintln(&builder, "}")
-	fmt.sbprintln(&builder)
-	fmt.sbprintf(&builder, "TRACK_WAVEFORM_SAMPLE_COUNT :: %d\n", TRACK_WAVEFORM_SAMPLE_COUNT)
-	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, "GeneratedTrack :: struct {")
-	fmt.sbprintln(&builder, "\tfile_hash: string,")
-	fmt.sbprintln(&builder, "\tactive_rms: f32,")
-	fmt.sbprintln(&builder, "\tduration_seconds: f32,")
-	fmt.sbprintln(&builder, "\twaveform_samples_offset: int,")
-	fmt.sbprintln(&builder, "}")
-	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, "@(rodata)")
-	fmt.sbprintln(&builder, "TRACK_WAVEFORM_SAMPLES := [?]i8 {")
-	for track in tracks {
-		for value, index in track.waveform_samples {
-			if index % 32 == 0 do fmt.sbprint(&builder, "\t")
-			fmt.sbprintf(&builder, "%d,", value)
-			if index % 32 == 31 || index == len(track.waveform_samples) - 1 {
-				fmt.sbprintln(&builder)
-			} else {
-				fmt.sbprint(&builder, " ")
-			}
-		}
-	}
-	fmt.sbprintln(&builder, "}")
-	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, "TRACKS := map[string]GeneratedTrack {")
-	for track, track_index in tracks {
-		fmt.sbprintf(&builder, "\t%q = {{\n", track.path)
-		fmt.sbprintf(&builder, "\t\tfile_hash = %q,\n", fmt.aprintf("%v", u128(track.file_hash)))
-		fmt.sbprintf(&builder, "\t\tactive_rms = %.8f,\n", track.active_rms)
-		fmt.sbprintf(&builder, "\t\tduration_seconds = %.8f,\n", track.duration_seconds)
-		fmt.sbprintf(
-			&builder,
-			"\t\twaveform_samples_offset = %d,\n",
-			track_index * TRACK_WAVEFORM_SAMPLE_COUNT,
-		)
-		fmt.sbprintln(&builder, "\t},")
 	}
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
@@ -300,7 +262,61 @@ main :: proc() {
 		os.exit(1)
 	}
 
+	track_data_write(tracks[:])
+
 	save_rms_cache(tracks[:])
+}
+
+// Writes track metadata + waveforms as a binary blob consumed by
+// tracks_data_load in source/sound.odin. Keeping this data out of compiled Odin
+// source keeps build times down.
+track_data_write :: proc(tracks: []GeneratedTrack) {
+	file, open_err := os.open(OUT_DATA_FILE, {.Write, .Create, .Trunc}, {.Read_User, .Write_User})
+	if open_err != os.ERROR_NONE {
+		fmt.eprintf("Error opening %s: %v\n", OUT_DATA_FILE, open_err)
+		os.exit(1)
+	}
+	defer os.close(file)
+	w := os.to_stream(file)
+
+	// Scalar fields and length prefixes go through the caller-owned writer;
+	// strings and waveforms are written as zero-copy views.
+	value_write :: proc(w: io.Writer, value: u32) {
+		value_bytes := transmute([4]byte)value
+		_, write_err := io.write_full(w, value_bytes[:])
+		if write_err != nil {
+			fmt.eprintf("Error writing %s: %v\n", OUT_DATA_FILE, write_err)
+			os.exit(1)
+		}
+	}
+	string_write :: proc(w: io.Writer, value: string) {
+		value_write(w, u32(len(value)))
+		_, write_err := io.write_full(w, transmute([]byte)value)
+		if write_err != nil {
+			fmt.eprintf("Error writing %s: %v\n", OUT_DATA_FILE, write_err)
+			os.exit(1)
+		}
+	}
+
+	_, write_err := io.write_full(w, transmute([]byte)TRACK_DATA_MAGIC)
+	if write_err != nil {
+		fmt.eprintf("Error writing %s: %v\n", OUT_DATA_FILE, write_err)
+		os.exit(1)
+	}
+	value_write(w, TRACK_DATA_VERSION)
+	value_write(w, u32(len(tracks)))
+	value_write(w, TRACK_WAVEFORM_SAMPLE_COUNT)
+	for &track in tracks {
+		string_write(w, track.path)
+		string_write(w, fmt.aprintf("%v", u128(track.file_hash)))
+		value_write(w, transmute(u32)track.active_rms)
+		value_write(w, transmute(u32)track.duration_seconds)
+		_, write_err := io.write_full(w, transmute([]byte)track.waveform_samples[:])
+		if write_err != nil {
+			fmt.eprintf("Error writing %s: %v\n", OUT_DATA_FILE, write_err)
+			os.exit(1)
+		}
+	}
 }
 
 load_sound_effects :: proc() -> [dynamic]SoundEffect {

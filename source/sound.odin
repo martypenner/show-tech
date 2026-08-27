@@ -122,6 +122,80 @@ sound_settings: ^SoundSettings
 // so the cache stays portable even when the symlink target moves.
 MUSIC_DIR :: "assets/sounds/music"
 
+// Track metadata and waveforms load at runtime from the binary blob that
+// source/tools/generate_enums writes to assets/sounds/music.rms. Keeping the
+// multi-thousand-track dataset out of compiled Odin source keeps build times
+// down. Strings and waveform slices point into the loaded buffer, which lives
+// as long as the game memory arena.
+TRACK_DATA_PATH :: "assets/sounds/music.rms"
+TRACK_DATA_MAGIC :: "RMST"
+TRACK_DATA_VERSION :: 1
+
+GeneratedTrack :: struct {
+	file_hash:        string,
+	active_rms:       f32,
+	duration_seconds: f32,
+	waveform_samples: []i8,
+}
+
+TRACKS: map[string]GeneratedTrack
+
+@(private = "file")
+tracks_data: []byte
+
+tracks_data_load :: proc() {
+	if tracks_data != nil do return
+
+	ok: bool
+	tracks_data, ok = read_entire_file(TRACK_DATA_PATH)
+	log.ensuref(ok, "Missing %s; run scripts/generate_enums.sh", TRACK_DATA_PATH)
+
+	offset := 0
+	read_bytes :: proc(offset: ^int, byte_count: int) -> []byte {
+		ensure(len(tracks_data) - offset^ >= byte_count)
+		bytes := tracks_data[offset^:offset^ + byte_count]
+		offset^ += byte_count
+		return bytes
+	}
+	read_u32 :: proc(offset: ^int) -> u32 {
+		return (cast(^u32)&read_bytes(offset, 4)[0])^
+	}
+	read_f32 :: proc(offset: ^int) -> f32 {
+		return (cast(^f32)&read_bytes(offset, 4)[0])^
+	}
+	read_string :: proc(offset: ^int) -> string {
+		return string(read_bytes(offset, int(read_u32(offset))))
+	}
+
+	ensure(string(read_bytes(&offset, 4)) == TRACK_DATA_MAGIC)
+	version := read_u32(&offset)
+	log.ensuref(
+		version == TRACK_DATA_VERSION,
+		"Unsupported %s version %d; run scripts/generate_enums.sh",
+		TRACK_DATA_PATH,
+		version,
+	)
+	track_count := int(read_u32(&offset))
+	sample_count := int(read_u32(&offset))
+	ensure(track_count > 0 && sample_count > 0)
+
+	TRACKS = make(map[string]GeneratedTrack, track_count)
+	for _ in 0 ..< track_count {
+		path := read_string(&offset)
+		file_hash := read_string(&offset)
+		active_rms := read_f32(&offset)
+		duration_seconds := read_f32(&offset)
+		waveform := transmute([]i8)read_bytes(&offset, sample_count)
+		TRACKS[path] = GeneratedTrack {
+			file_hash        = file_hash,
+			active_rms       = active_rms,
+			duration_seconds = duration_seconds,
+			waveform_samples = waveform,
+		}
+	}
+	ensure(offset == len(tracks_data))
+}
+
 MAX_FADE_IN_TIME :: 10
 MAX_FADE_OUT_TIME :: 10
 MAX_START_NEXT_TIME :: 10
@@ -880,6 +954,7 @@ sound_settings_save :: proc() {
 }
 
 sound_settings_init :: proc() -> ^SoundSettings {
+	tracks_data_load()
 	sound_settings = new(SoundSettings)
 	sound_settings^ = sound_settings_load_from_disk()
 	ensure(mixer.Init())

@@ -264,6 +264,11 @@ game_hot_reloaded :: proc(mem: rawptr) {
 		io = imgui.GetIO()
 	}
 
+	// Track data globals reset on every DLL reload, so they must reload here
+	// too. The file-level guard in tracks_data_load makes this a no-op on the
+	// initial load, where sound_settings_init already loaded them.
+	tracks_data_load()
+
 	sound_hot_reloaded(gm.sound_settings)
 }
 

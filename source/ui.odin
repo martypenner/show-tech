@@ -855,16 +855,16 @@ controls_draw :: proc() {
 					imgui.GetColorU32ImVec4({color[0], color[1], color[2], 1}),
 				)
 
-			if imgui.ColorButton("colorpicker", {color[0], color[1], color[2], 1}) {
-				imgui.OpenPopup("##lights-color")
-			}
+				if imgui.ColorButton("colorpicker", {color[0], color[1], color[2], 1}) {
+					imgui.OpenPopup("##lights-color")
+				}
 
-			if imgui.BeginPopup("##lights-color") {
-				imgui.PushItemWidth(imgui.GetFrameHeight() * 8)
-				imgui.ColorPicker3("##lights-color-value", &color, {.NoSidePreview})
-				imgui.PopItemWidth()
-				imgui.EndPopup()
-			}
+				if imgui.BeginPopup("##lights-color") {
+					imgui.PushItemWidth(imgui.GetFrameHeight() * 8)
+					imgui.ColorPicker3("##lights-color-value", &color, {.NoSidePreview})
+					imgui.PopItemWidth()
+					imgui.EndPopup()
+				}
 
 				controls_group_end()
 			}

@@ -1,5 +1,6 @@
 package game
 
+import "core:os"
 import "core:testing"
 import sdl "vendor:sdl3"
 import mixer "vendor:sdl3/mixer"
@@ -44,6 +45,8 @@ music_normalization_is_attenuation_only :: proc(t: ^testing.T) {
 
 @(test)
 sound_music_current_volume_uses_maximum_live_volume :: proc(t: ^testing.T) {
+	TRACKS = make(map[string]GeneratedTrack)
+	defer delete(TRACKS)
 	playback, mixer_value := music_playback_test_make({{0, 0.4}})
 	defer music_playback_test_destroy(&playback, mixer_value)
 	path := "test-current-volume"
@@ -94,6 +97,8 @@ sound_music_current_volume_uses_maximum_live_volume :: proc(t: ^testing.T) {
 
 @(test)
 music_playback_explicit_endpoints_ignore_settings_volume :: proc(t: ^testing.T) {
+	TRACKS = make(map[string]GeneratedTrack)
+	defer delete(TRACKS)
 	playback, mixer_value := music_playback_test_make({{0, 0}})
 	defer music_playback_test_destroy(&playback, mixer_value)
 	path := "test-explicit-endpoints"
@@ -143,6 +148,8 @@ music_playback_successor_endpoint_uses_final_nonzero_point :: proc(t: ^testing.T
 
 @(test)
 music_playback_stopping_gain_tracks_normalization :: proc(t: ^testing.T) {
+	TRACKS = make(map[string]GeneratedTrack)
+	defer delete(TRACKS)
 	playback, mixer_value := music_playback_test_make({{0, 0.4}, {10, 0}})
 	defer music_playback_test_destroy(&playback, mixer_value)
 	path := "test-stopping-gain"
@@ -287,6 +294,8 @@ music_playback_volume_scene_points :: proc(t: ^testing.T) {
 
 @(test)
 music_playback_volume_set_one_point_is_ongoing :: proc(t: ^testing.T) {
+	TRACKS = make(map[string]GeneratedTrack)
+	defer delete(TRACKS)
 	volumes := [?]f32{0.4, 0}
 	for volume in volumes {
 		playback, mixer_value := music_playback_test_make({{0, 0.2}, {10, 0}})
@@ -360,6 +369,14 @@ music_playback_zero_final_volume_suppresses_automatic_next :: proc(t: ^testing.T
 
 @(test)
 music_playback_one_point_zero_starts_silent_automatic_next :: proc(t: ^testing.T) {
+	music_playback_test_tone_write()
+	defer os.remove(MUSIC_PLAYBACK_TEST_TONE_PATH)
+	TRACKS = make(map[string]GeneratedTrack)
+	defer delete(TRACKS)
+	TRACKS[MUSIC_PLAYBACK_TEST_TONE_PATH] = {
+		file_hash        = "test",
+		duration_seconds = 30,
+	}
 	playback, mixer_value := music_playback_test_make({{0, 0}})
 	playback.bounds_end_seconds = 30
 	playlist := Playlist {
@@ -370,7 +387,7 @@ music_playback_one_point_zero_starts_silent_automatic_next :: proc(t: ^testing.T
 		&playlist.tracks,
 		Track {
 			title = "successor",
-			path = "assets/sounds/music/Ave Maria/Gautier Capucon plays Schubert - Ave Maria – feat. Maitrise Notre-Dame de Paris (orch. Ducros) [fH225XZldjs].mp3",
+			path  = MUSIC_PLAYBACK_TEST_TONE_PATH,
 		},
 	)
 	playback.playlist = &playlist
@@ -410,6 +427,64 @@ playlist_selection_preserves_order_and_avoids_last :: proc(t: ^testing.T) {
 	first.played = true
 	playlist.last_played_track = first
 	testing.expect_value(t, playlist_pick_track_unplayed(&playlist).title, "second")
+}
+
+MUSIC_PLAYBACK_TEST_TONE_PATH :: "build/music_playback_test_tone.wav"
+
+Wav_Header :: struct #packed {
+	riff:            [4]byte,
+	riff_size:       u32,
+	wave:            [4]byte,
+	fmt:             [4]byte,
+	fmt_size:        u32,
+	audio_format:    u16,
+	channels:        u16,
+	sample_rate:     u32,
+	byte_rate:       u32,
+	block_align:     u16,
+	bits_per_sample: u16,
+	data_marker:     [4]byte,
+	data_size:       u32,
+}
+
+// Writes a half-second square wave WAV so music_playback_start has a real
+// decodable file without depending on synced music assets.
+music_playback_test_tone_write :: proc() {
+	sample_rate := 48000
+	channels := 2
+	frame_count := 24000
+	sample_count := frame_count * channels
+
+	samples := make([]f32, sample_count)
+	defer delete(samples)
+	for frame in 0 ..< frame_count {
+		sample := frame % 2 == 0 ? f32(0.1) : f32(-0.1)
+		samples[frame * channels] = sample
+		samples[frame * channels + 1] = sample
+	}
+
+	header := Wav_Header {
+		riff            = "RIFF",
+		riff_size       = u32(36 + sample_count * 4),
+		wave            = "WAVE",
+		fmt             = "fmt ",
+		fmt_size        = 16,
+		audio_format    = 3, // IEEE float
+		channels        = u16(channels),
+		sample_rate     = u32(sample_rate),
+		byte_rate       = u32(sample_rate * channels * 4),
+		block_align     = u16(channels * 4),
+		bits_per_sample = 32,
+		data_marker     = "data",
+		data_size       = u32(sample_count * 4),
+	}
+
+	file_data := make([]byte, size_of(Wav_Header) + sample_count * 4)
+	defer delete(file_data)
+	header_bytes := transmute([size_of(Wav_Header)]byte)header
+	copy(file_data, header_bytes[:])
+	copy(file_data[size_of(Wav_Header):], transmute([]byte)samples)
+	ensure(write_entire_file(MUSIC_PLAYBACK_TEST_TONE_PATH, file_data))
 }
 
 music_playback_test_make :: proc(points: []MusicVolumePoint) -> (MusicPlayback, ^mixer.Mixer) {

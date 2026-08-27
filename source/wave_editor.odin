@@ -134,13 +134,11 @@ wave_editor :: proc() {
 	)
 
 	center_y := origin.y + WAVEFORM_HEIGHT / 2
-	waveform_samples_offset := generated_track.waveform_samples_offset
-	waveform_samples := TRACK_WAVEFORM_SAMPLES[waveform_samples_offset:waveform_samples_offset +
-	TRACK_WAVEFORM_SAMPLE_COUNT]
+	waveform_samples := generated_track.waveform_samples
 	for sample, index in waveform_samples {
 		if index == 0 do continue
-		x0 := origin.x + f32(index - 1) * width / f32(TRACK_WAVEFORM_SAMPLE_COUNT - 1)
-		x1 := origin.x + f32(index) * width / f32(TRACK_WAVEFORM_SAMPLE_COUNT - 1)
+		x0 := origin.x + f32(index - 1) * width / f32(len(waveform_samples) - 1)
+		x1 := origin.x + f32(index) * width / f32(len(waveform_samples) - 1)
 		y0 := center_y - f32(waveform_samples[index - 1]) / 127 * WAVEFORM_HEIGHT / 2
 		y1 := center_y - f32(sample) / 127 * WAVEFORM_HEIGHT / 2
 		imgui.DrawList_AddLine(
