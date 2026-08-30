@@ -4,9 +4,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: 0 20 * * *
-
 
 jobs:
   build_linux:
@@ -17,11 +14,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release: false
-      
+
       - uses: mymindstorm/setup-emsdk@v14
-      
+
       - uses: actions/checkout@v4
-      
+
       - name: Build hot reload
         run: ./scripts/build_hot_reload.sh
 
@@ -45,7 +42,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release: false
-      
+
       - uses: mymindstorm/setup-emsdk@v14
 
       - uses: actions/checkout@v4
