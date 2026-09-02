@@ -383,13 +383,7 @@ music_playback_one_point_zero_starts_silent_automatic_next :: proc(t: ^testing.T
 		name = "test",
 	}
 	defer delete(playlist.tracks)
-	append(
-		&playlist.tracks,
-		Track {
-			title = "successor",
-			path  = MUSIC_PLAYBACK_TEST_TONE_PATH,
-		},
-	)
+	append(&playlist.tracks, Track{title = "successor", path = MUSIC_PLAYBACK_TEST_TONE_PATH})
 	playback.playlist = &playlist
 	settings := SoundSettings {
 		mixer                  = mixer_value,

@@ -649,6 +649,14 @@ controls_draw :: proc() {
 			)
 			button_width := imgui.CalcTextSize(xs).x + imgui.GetStyle().FramePadding.x * 2
 
+			left_width := max(
+				imgui.GetContentRegionAvail().x -
+				TIMER_PANEL_WIDTH -
+				imgui.GetStyle().ItemSpacing.x,
+				100,
+			)
+			imgui.BeginChild("ControlsMain", {left_width, 0})
+
 			{
 				if imgui.Checkbox("Use house music", &gm.sound_settings.use_house_music) {
 					if gm.sound_settings.use_house_music {
@@ -680,8 +688,9 @@ controls_draw :: proc() {
 					}
 					sound_settings_save()
 				}
-				imgui.SameLine(spacing = 40)
+				imgui.SameLine(spacing = 16)
 
+				imgui.PushItemWidth(460)
 				music_vol := sound_music_current_volume() * 100
 				if imgui.SliderFloat(
 					"Volume",
@@ -698,6 +707,7 @@ controls_draw :: proc() {
 					}
 					sound_settings_save()
 				}
+				imgui.PopItemWidth()
 			}
 
 			{
@@ -781,7 +791,6 @@ controls_draw :: proc() {
 				if controls_button("Cut to black (u)##Lighting", .Lighting, button_width) {
 					lighting_cut_to_black()
 				}
-				imgui.SameLine()
 				if controls_button("Center focus (y)##Lighting", .Lighting, button_width) {
 					lighting_center_focus()
 				}
@@ -1008,6 +1017,10 @@ controls_draw :: proc() {
 
 				controls_group_end()
 			}
+
+			imgui.EndChild()
+			imgui.SameLine()
+			timers_draw()
 
 			imgui.EndTabItem()
 		}

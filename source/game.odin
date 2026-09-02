@@ -51,6 +51,7 @@ GameMemory :: struct {
 		fx_osc_address: [LightingFxKind]string,
 	},
 	active_tab:            Tab,
+	timers:                [MAX_TIMERS]Timer,
 	// imgui state preserved across hot reloads. imgui's context, allocator
 	// functions, and SDL handles are DLL-global statics that reset to nil when
 	// a new DLL loads, so they must be saved on first init and restored here.
@@ -58,12 +59,20 @@ GameMemory :: struct {
 	imgui_alloc_func:      imgui.MemAllocFunc,
 	imgui_free_func:       imgui.MemFreeFunc,
 	imgui_alloc_user_data: rawptr,
-	window:                ^sdl.Window,
-	renderer:              ^sdl.Renderer,
+	windows:               struct {
+		controls:   ^sdl.Window,
+		projection: ^sdl.Window,
+	},
+	renderers:             struct {
+		controls:   ^sdl.Renderer,
+		projection: ^sdl.Renderer,
+	},
 }
 
-window: ^sdl.Window
-renderer: ^sdl.Renderer
+controls_window: ^sdl.Window
+controls_renderer: ^sdl.Renderer
+projection_window: ^sdl.Window
+projection_renderer: ^sdl.Renderer
 io: ^imgui.IO
 window_width: i32 = 1280
 window_height: i32 = 720
@@ -81,39 +90,49 @@ update :: proc() {
 	for sdl.PollEvent(&event) {
 		imsdl3.ProcessEvent(&event)
 
-		if event.type == .QUIT ||
-		   (event.type == .WINDOW_CLOSE_REQUESTED &&
-				   event.window.windowID == sdl.GetWindowID(window)) {
-			gm.should_run = false
-		}
-		if event.type == .KEY_DOWN &&
-		   (!event.key.repeat || event.key.key == sdl.K_PLUS || event.key.key == sdl.K_MINUS) {
-			if gm.active_tab == .Controls {
-				hotkeys_handle_key(event.key.key)
+		if event.window.windowID == sdl.GetWindowID(controls_window) {
+			#partial switch event.type {
+			case .QUIT, .WINDOW_CLOSE_REQUESTED:
+				gm.should_run = false
+			case .KEY_DOWN:
+				if !event.key.repeat ||
+				   event.key.key == sdl.K_PLUS ||
+				   event.key.key == sdl.K_MINUS {
+					if gm.active_tab == .Controls && !io.WantTextInput {
+						hotkeys_handle_key(event.key.key)
+					}
+				}
+			case .WINDOW_RESIZED:
+				sdl.GetWindowSizeInPixels(controls_window, &window_width, &window_height)
 			}
-		}
-
-		if event.type == .WINDOW_RESIZED {
-			sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
 		}
 	}
 
 	sound_update()
 	lighting_update()
+	timers_update(dt)
 }
 
 draw :: proc() {
+	sdl.SetRenderDrawColor(projection_renderer, 16, 16, 16, sdl.ALPHA_OPAQUE)
+	sdl.RenderClear(projection_renderer)
+	sdl.RenderPresent(projection_renderer)
+
 	imsdlrenderer3.NewFrame()
 	imsdl3.NewFrame()
 	imgui.NewFrame()
 
 	controls_draw()
 	imgui.Render()
-	sdl.SetRenderScale(renderer, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y)
-	sdl.SetRenderDrawColor(renderer, 16, 16, 16, sdl.ALPHA_OPAQUE)
-	sdl.RenderClear(renderer)
-	imsdlrenderer3.RenderDrawData(imgui.GetDrawData(), renderer)
-	sdl.RenderPresent(renderer)
+	sdl.SetRenderScale(
+		controls_renderer,
+		io.DisplayFramebufferScale.x,
+		io.DisplayFramebufferScale.y,
+	)
+	sdl.SetRenderDrawColor(controls_renderer, 16, 16, 16, sdl.ALPHA_OPAQUE)
+	sdl.RenderClear(controls_renderer)
+	imsdlrenderer3.RenderDrawData(imgui.GetDrawData(), controls_renderer)
+	sdl.RenderPresent(controls_renderer)
 }
 
 @(export)
@@ -135,21 +154,41 @@ game_init_window :: proc() {
 	when !ODIN_DEBUG {
 		window_flags += {.MAXIMIZED}
 	}
-	window = sdl.CreateWindow("Showtime", window_width, window_height, window_flags)
-	ensure(window != nil, string(sdl.GetError()))
+	controls_window = sdl.CreateWindow(
+		"Showtime Control",
+		window_width,
+		window_height,
+		window_flags,
+	)
+	ensure(controls_window != nil, string(sdl.GetError()))
+	projection_window = sdl.CreateWindow(
+		"Showtime Projection",
+		window_width,
+		window_height,
+		{.RESIZABLE, .HIGH_PIXEL_DENSITY, .HIDDEN, .MAXIMIZED, .FULLSCREEN},
+	)
+	ensure(projection_window != nil, string(sdl.GetError()))
+
 	renderer_name := "vulkan"
 	when ODIN_OS == .Darwin {
 		renderer_name = "metal"
 	}
-	renderer = sdl.CreateRenderer(
-		window,
+	controls_renderer = sdl.CreateRenderer(
+		controls_window,
 		strings.clone_to_cstring(renderer_name, context.temp_allocator),
 	)
-	ensure(renderer != nil, string(sdl.GetError()))
+	ensure(controls_renderer != nil, string(sdl.GetError()))
+	projection_renderer = sdl.CreateRenderer(
+		projection_window,
+		strings.clone_to_cstring(renderer_name, context.temp_allocator),
+	)
+	ensure(projection_renderer != nil, string(sdl.GetError()))
 	// Might need a way to limit this further to 60 fps consistently
-	sdl.SetRenderVSync(renderer, 1)
-	sdl.SetWindowPosition(window, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED)
-	sdl.ShowWindow(window)
+	sdl.SetRenderVSync(controls_renderer, 1)
+	sdl.SetRenderVSync(projection_renderer, 1)
+	sdl.SetWindowPosition(controls_window, sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED)
+	sdl.ShowWindow(controls_window)
+	// sdl.ShowWindow(projection_window)
 
 	// Setup Dear ImGui context
 	imgui.CHECKVERSION()
@@ -164,8 +203,8 @@ game_init_window :: proc() {
 	style.FontScaleDpi = main_scale
 	style.FontSizeBase = 14
 
-	imsdl3.InitForSDLRenderer(window, renderer)
-	imsdlrenderer3.Init(renderer)
+	imsdl3.InitForSDLRenderer(controls_window, controls_renderer)
+	imsdlrenderer3.Init(controls_renderer)
 }
 
 game_memory_make :: proc() -> ^GameMemory {
@@ -217,8 +256,10 @@ game_shutdown_window :: proc() {
 	imsdl3.Shutdown()
 	imgui.DestroyContext()
 
-	sdl.DestroyRenderer(renderer)
-	sdl.DestroyWindow(window)
+	sdl.DestroyRenderer(controls_renderer)
+	sdl.DestroyRenderer(projection_renderer)
+	sdl.DestroyWindow(controls_window)
+	sdl.DestroyWindow(projection_window)
 	sdl.Quit()
 }
 
@@ -246,15 +287,19 @@ game_hot_reloaded :: proc(mem: rawptr) {
 			&gm.imgui_free_func,
 			&gm.imgui_alloc_user_data,
 		)
-		gm.window = window
-		gm.renderer = renderer
+		gm.windows.controls = controls_window
+		gm.windows.projection = projection_window
+		gm.renderers.controls = controls_renderer
+		gm.renderers.projection = projection_renderer
 	} else {
 		// Hot reload: the new DLL's globals are nil. Restore imgui context
 		// and allocator functions (both are DLL-global statics in imgui, not
 		// per-context), plus the SDL handles that game_init_window set up
 		// once and never re-runs.
-		window = gm.window
-		renderer = gm.renderer
+		controls_window = gm.windows.controls
+		projection_window = gm.windows.projection
+		controls_renderer = gm.renderers.controls
+		projection_renderer = gm.renderers.projection
 		imgui.SetCurrentContext(gm.imgui_context)
 		imgui.SetAllocatorFunctions(
 			gm.imgui_alloc_func,
@@ -284,5 +329,5 @@ game_force_restart :: proc() -> bool {
 
 // In a web build, this is called when browser changes size.
 game_parent_window_size_changed :: proc(w, h: int) {
-	sdl.GetWindowSizeInPixels(window, &window_width, &window_height)
+	sdl.GetWindowSizeInPixels(controls_window, &window_width, &window_height)
 }
